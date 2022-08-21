@@ -1,10 +1,10 @@
 package hrt.prefab.fx;
 import hrt.prefab.fx.BaseFX.AdditionalProperies;
-import hrt.prefab.Curve;
+import hrt.prefab.CurvePrefab;
 import hrt.prefab.Prefab as PrefabElement;
 import hrt.prefab.fx.BaseFX.ObjectAnimation;
 import hrt.prefab.fx.BaseFX.ShaderAnimation;
-
+import cdb.Curve;
 
 @:allow(hrt.prefab.fx.FX)
 class FXAnimation extends h3d.scene.Object {
@@ -274,32 +274,32 @@ class FXAnimation extends h3d.scene.Object {
 		var anyFound = false;
 
 		function makeVal(name, def) : Value {
-			var c = Curve.getCurve(elt, name);
+			var c = CurvePrefab.getCurve(elt, name);
 			if(c != null)
 				anyFound = true;
-			return c != null ? VCurve(c) : def;
+			return c != null ? VCurve(c.curve) : def;
 		}
 
 		function makeVector(name: String, defVal: Float, uniform: Bool=true, scale: Float=1.0) : Value {
-			var curves = Curve.getCurves(elt, name);
+			var curves = CurvePrefab.getCurves(elt, name);
 			if(curves == null || curves.length == 0)
 				return null;
 
 			anyFound = true;
 
 			if(uniform && curves.length == 1 && curves[0].name == name)
-				return scale != 1.0 ? VCurveScale(curves[0], scale) : VCurve(curves[0]);
+				return scale != 1.0 ? VCurveScale(curves[0].curve, scale) : VCurve(curves[0].curve);
 
-			return Curve.getVectorValue(curves, defVal, scale);
+			return CurvePrefab.getVectorValue(curves, defVal, scale);
 		}
 
 		function makeColor(name: String) {
-			var curves = Curve.getCurves(elt, name);
+			var curves = CurvePrefab.getCurves(elt, name);
 			if(curves == null || curves.length == 0)
 				return null;
 
 			anyFound = true;
-			return Curve.getColorValue(curves);
+			return CurvePrefab.getColorValue(curves);
 		}
 
 		var ap : AdditionalProperies = null;

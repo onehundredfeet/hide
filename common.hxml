@@ -2,7 +2,7 @@
 -lib heaps
 -lib hxbit
 -lib hscript
--lib castle
+-lib castledbx
 -lib hx3compat
 -lib domkit
 -D js-classic

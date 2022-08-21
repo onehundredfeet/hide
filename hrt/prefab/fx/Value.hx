@@ -1,4 +1,5 @@
 package hrt.prefab.fx;
+import cdb.Curve;
 
 enum Value {
 	VZero;

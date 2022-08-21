@@ -1,6 +1,12 @@
 package hide.comp.cdb;
 import hxd.Key in K;
 
+// <Curve Editor>
+import hrt.prefab.CurvePrefab;
+import hide.comp.CurveEditor;
+import cdb.Curve;
+// </Curve Editor>
+
 class Cell extends Component {
 
 	static var typeNames = [for( t in Type.getEnumConstructs(cdb.Data.ColumnType) ) t.substr(1).toLowerCase()];
@@ -16,6 +22,56 @@ class Cell extends Component {
 	public var table(get, never) : Table;
 	var blurOff = false;
 	public var inEdit = false;
+
+	// <Curve Editor>
+	var curveEditor :CurveEditor;
+	var curve:Curve;
+
+	function curveUpdate( ce : CurveEditor) {
+		setValue( ce.value() );
+	}
+
+	final minHeight = 100;
+
+	function createCurveEditor( curve : Curve, normalized:Bool, parent ) : CurveEditor {
+		//var dispKey = getPath() + "/" + curve.getAbsPath(true);
+		var curveContainer = new Element('<div class="curve"></div>').appendTo(parent);
+		var height = 230;
+		if(height == null) height = 230;
+		if(height < minHeight) height = minHeight;
+		curveContainer.height(height);
+		var curveEdit = new hide.comp.CurveEditor(editor.undo, curveContainer);
+		curveEdit.listener = curveUpdate;
+		curveEdit.curve = curve;
+
+		if (normalized) {
+			curveEdit.minValue = 0;
+			curveEdit.maxValue = 1;
+		}
+
+
+		curveEdit.xOffset = 0.0;
+		curveEdit.yOffset = 0.0;
+		curveEdit.xScale = 100.0;
+		curveEdit.yScale = 100.0;
+
+		curveContainer.on("mousewheel", function(e) {
+			var step = e.originalEvent.wheelDelta > 0 ? 1.0 : -1.0;
+			if(e.ctrlKey) {
+				var prevH = curveContainer.height();
+				var newH = hxd.Math.max(minHeight, prevH + Std.int(step * 20.0));
+				curveContainer.height(newH);
+				//saveDisplayState(dispKey + "/height", newH);
+				curveEdit.yScale *= newH / prevH;
+				curveEdit.refresh();
+				e.preventDefault();
+				e.stopPropagation();
+			}
+		});
+
+		return curveEdit;
+	}
+	// </Curve Editor>
 
 	public function new( root : Element, line : Line, column : cdb.Data.Column ) {
 		super(null,root);
@@ -40,6 +96,13 @@ class Cell extends Component {
 		// Used to get the Cell component back from its DOM/Jquery element
 		root.prop("cellComp", this);
 		if( column.kind == Script ) root.addClass("t_script");
+
+		if (column.type == TCurve)  {
+			currentValue = Reflect.field(line.obj, column.name);
+			curve = new Curve();
+			curve.load(currentValue);
+			curveEditor = createCurveEditor( curve, false, element );
+		}
 		refresh();
 
 		switch( column.type ) {
@@ -52,6 +115,9 @@ class Cell extends Component {
 		case TString if( column.kind == Script ):
 			root.addClass("t_script");
 			element.click(function(_) edit());
+		// <Curve Editor>
+		case TCurve:
+		// </Curve Editor>
 		default:
 			if( canEdit() )
 				element.dblclick(function(_) if (!blockEdit()) edit());
@@ -59,6 +125,9 @@ class Cell extends Component {
 				root.addClass("t_readonly");
 		}
 
+		// <Curve Editor>
+		if (curveEditor == null) {
+		// </Curve Editor>
 		if( column.type == TString && column.kind == Localizable )
 			root.addClass("t_loc");
 
@@ -72,6 +141,9 @@ class Cell extends Component {
 			e.stopPropagation();
 			e.preventDefault();
 		});
+		// <Curve Editor>
+		}
+		// </Curve Editor>
 	}
 
 	public function dragDropFile( relativePath : String, isDrop : Bool = false ) : Bool {
@@ -169,6 +241,10 @@ class Cell extends Component {
 	static var R_HTML = ~/[<&]/;
 
 	public function refresh(withSubtable = false) {
+		// <CURVE EDITOR>
+		if (curveEditor == null) {
+		// </CURVE EDITOR>
+
 		currentValue = Reflect.field(line.obj, column.name);
 
 		blurOff = true;
@@ -190,6 +266,14 @@ class Cell extends Component {
 			else
 				table.refreshList(this);
 		}
+	
+		// <CURVE EDITOR>
+		} else {
+			curve.load(currentValue);
+			updateClasses();
+			curveEditor.refresh();	
+		}
+		// </CURVE EDITOR>		
 	}
 
 	function watchFile( file : String ) {
@@ -322,6 +406,8 @@ class Cell extends Component {
 			switch( c.display ) {
 			case Percent:
 				(Math.round(v * 10000)/100) + "%";
+			case Degrees:
+				(Math.round(100 * v * (180.0 / Math.PI))/ 100) + " deg";
 			default:
 				v + "";
 			}
@@ -450,6 +536,17 @@ class Cell extends Component {
 			var str = Std.string(v).split("\n").join(" ").split("\t").join("");
 			if( str.length > 50 ) str = str.substr(0, 47) + "...";
 			str;
+		case TFloat2:
+			var v : cdb.Types.Float2 = v;
+			v.x + "," + v.y;
+		case TFloat3:
+			var v : cdb.Types.Float3 = v;
+			v.x + "," + v.y + "," + v.z;
+		case TFloat4:
+			var v : cdb.Types.Float4 = v;
+			v.x + "," + v.y + "," + v.z + "," + v.w;
+		case TCurve:
+			'<span class="error">#Unsupported</span>';
 		}
 	}
 
@@ -614,7 +711,7 @@ class Cell extends Component {
 		switch( column.type ) {
 		case TString if( column.kind == Script ):
 			open();
-		case TInt, TFloat, TString, TId, TCustom(_), TDynamic:
+		case TFloat2, TFloat3, TFloat4,TInt, TFloat, TString, TId, TCustom(_), TDynamic:		
 			var str = value == null ? "" : Std.isOfType(value, String) ? value : editor.base.valToString(column.type, value);
 			var textSpan = element.wrapInner("<span>").find("span");
 			var textHeight = textSpan.height();
@@ -1028,7 +1125,7 @@ class Cell extends Component {
 				focus();
 			};
 
-		case TLayer(_), TTileLayer:
+		case TCurve, TLayer(_), TTileLayer:
 			// no edit
 		case TImage:
 			// deprecated

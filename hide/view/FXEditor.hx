@@ -1,10 +1,11 @@
 package hide.view;
 import hrt.prefab.Light;
+import cdb.Curve;
 using Lambda;
 
 import hide.Element;
 import hrt.prefab.Prefab in PrefabElement;
-import hrt.prefab.Curve;
+import hrt.prefab.CurvePrefab;
 import hrt.prefab.fx.Event;
 import hide.view.CameraController.CamController;
 
@@ -768,9 +769,9 @@ class FXEditor extends FileView {
 
 			function updateSelected() {
 				curves = [];
-				var anyNonEmitter = curveEdits.find(ce -> !isInstanceCurve(ce.curve)) != null;
+				var anyNonEmitter = curveEdits.find(ce -> !isInstanceCurve(ce.prefab)) != null;
 				for(ce in curveEdits) {
-					if(anyNonEmitter && isInstanceCurve(ce.curve))
+					if(anyNonEmitter && isInstanceCurve(ce.prefab))
 						continue;  // Filter-out emitter curves unless only emitter curves are selected
 					curves.push(ce.curve);
 				}
@@ -956,7 +957,7 @@ class FXEditor extends FileView {
 		}
 	}
 
-	function addCurvesTrack(trackName: String, curves: Array<Curve>, tracksEl: Element) {
+	function addCurvesTrack(trackName: String, curves: Array<CurvePrefab>, tracksEl: Element) {
 		var keyTimeTolerance = 0.05;
 		var trackEdits : Array<hide.comp.CurveEditor> = [];
 		var trackEl = new Element('<div class="track">
@@ -999,7 +1000,7 @@ class FXEditor extends FileView {
 		var evaluator = new hrt.prefab.fx.Evaluator(new hxd.Rand(0));
 
 		function getKeyColor(key) {
-			return evaluator.getVector(Curve.getColorValue(curves), key.time);
+			return evaluator.getVector(CurvePrefab.getColorValue(curves), key.time);
 		}
 
 		function dragKey(from: hide.comp.CurveEditor, prevTime: Float, newTime: Float) {
@@ -1060,17 +1061,17 @@ class FXEditor extends FileView {
 
 		function addKey(time: Float) {
 			beforeChange();
-			for(curve in curves) {
-				curve.addKey(time);
+			for(curvePF in curves) {
+				curvePF.curve.addKey(time);
 			}
 			afterChange();
 			refreshDopesheet();
 		}
 
 
-		function keyContextClick(key: hrt.prefab.Curve.CurveKey, el: Element) {
+		function keyContextClick(key: cdb.Curve.CurveKey, el: Element) {
 			function setCurveVal(suffix: String, value: Float) {
-				var c = curves.find(c -> StringTools.endsWith(c.name, suffix));
+				var c = curves.find(c -> StringTools.endsWith(c.name, suffix)).curve;
 				if(c != null) {
 					var k = c.findKey(key.time, keyTimeTolerance);
 					if(k == null) {
@@ -1124,7 +1125,7 @@ class FXEditor extends FileView {
 					addKey(x);
 				}
 			});
-			var refKeys = curves[0].keys;
+			var refKeys = curves[0].curve.keys;
 			for(ik in 0...refKeys.length) {
 				var key = refKeys[ik];
 				var keyEl = new Element('<span class="key">').appendTo(dopesheet);
@@ -1177,7 +1178,7 @@ class FXEditor extends FileView {
 				height = 100;
 			if(height < minHeight) height = minHeight;
 			curveContainer.height(height);
-			curve.maxTime = data.duration == 0 ? 5000 : data.duration;
+			curve.curve.maxTime = data.duration == 0 ? 5000 : data.duration;
 			var curveEdit = new hide.comp.CurveEditor(this.undo, curveContainer);
 			curveEdit.saveDisplayKey = dispKey;
 			curveEdit.lockViewX = true;
@@ -1210,8 +1211,8 @@ class FXEditor extends FileView {
 			curveEdit.xOffset = xOffset;
 			curveEdit.xScale = xScale;
 			if(isInstanceCurve(curve) && curve.parent.to(hrt.prefab.fx.Emitter) == null || curve.name.indexOf("inst") >= 0)
-				curve.maxTime = 1.0;
-			curveEdit.curve = curve;
+				curve.curve.maxTime = 1.0;
+			curveEdit.prefab = curve;
 			curveEdit.onChange = function(anim) {
 				refreshDopesheet();
 			}
@@ -1328,7 +1329,7 @@ class FXEditor extends FileView {
 
 		var sections : Array<{
 			elt: PrefabElement,
-			curves: Array<Curve>,
+			curves: Array<CurvePrefab>,
 			events: Array<IEvent>
 		}> = [];
 
@@ -1354,7 +1355,7 @@ class FXEditor extends FileView {
 		}
 
 		for(sel in selection) {
-			for(curve in sel.flatten(Curve))
+			for(curve in sel.flatten(CurvePrefab))
 				getSection(curve).curves.push(curve);
 			for(evt in sel.flatten(Event))
 				getSection(evt).events.push(evt);
@@ -1386,7 +1387,7 @@ class FXEditor extends FileView {
 			if(sec.events.length > 0)
 				addEventsTrack(sec.events, tracksEl);
 
-			var groups = Curve.getGroups(sec.curves);
+			var groups = CurvePrefab.getGroups(sec.curves);
 			for(group in groups) {
 				addCurvesTrack(group.name, group.items, tracksEl);
 			}
@@ -1428,12 +1429,12 @@ class FXEditor extends FileView {
 		var added = [];
 		for(prop in props) {
 			var id = prefix != null ? prefix + "." + prop.name : prop.name;
-			if(Curve.getCurve(element, id) != null)
+			if(CurvePrefab.getCurve(element, id) != null)
 				continue;
-			var curve = new Curve(element);
+			var curve = new CurvePrefab(element);
 			curve.name = id;
 			if(prop.def != null)
-				curve.addKey(0, prop.def, Linear);
+				curve.curve.addKey(0, prop.def, Linear);
 			added.push(curve);
 		}
 
@@ -1805,7 +1806,7 @@ class FXEditor extends FileView {
 	}
 
 	static function getTrack(element : PrefabElement, propName : String) {
-		return Curve.getCurve(element, propName, false);
+		return CurvePrefab.getCurve(element, propName, false);
 	}
 
 	static function upperCase(prop: String) {
@@ -1813,7 +1814,7 @@ class FXEditor extends FileView {
 		return prop.charAt(0).toUpperCase() + prop.substr(1);
 	}
 
-	static function isInstanceCurve(curve: Curve) {
+	static function isInstanceCurve(curve: CurvePrefab) {
 		return curve.getParent(hrt.prefab.fx.Emitter) != null;
 	}
 

@@ -1,6 +1,6 @@
 package hrt.prefab.fx;
 import hrt.prefab.l3d.Polygon;
-import hrt.prefab.Curve;
+import hrt.prefab.CurvePrefab;
 import hrt.prefab.fx.BaseFX.ShaderAnimation;
 using Lambda;
 
@@ -1259,7 +1259,7 @@ class Emitter extends Object3D {
 		var template : Object3D = cast children.find( c -> c.enabled && (c.name == null || c.name.indexOf("collision") == -1) && c.to(Object3D) != null && c.to(Object3D).visible );
 
 		function makeParam(scope: Prefab, name: String): Value {
-			var getCurve = hrt.prefab.Curve.getCurve.bind(scope);
+			var getCurve = hrt.prefab.CurvePrefab.getCurve.bind(scope);
 
 			function vVal(f: Float) : Value {
 				return switch(f) {
@@ -1309,16 +1309,16 @@ class Emitter extends Object3D {
 				var randCurve = getCurve(pname + suffix + ".rand");
 				var randVal : Value = VZero;
 				if(randCurve != null)
-					randVal = VRandom(randIdx++, VCurveScale(randCurve, randProp != null ? randProp : 1.0));
+					randVal = VRandom(randIdx++, VCurveScale(randCurve.curve, randProp != null ? randProp : 1.0));
 				else if(randProp != null && randProp != 0.0)
 					randVal = VRandomScale(randIdx++, randProp);
 
 				var xCurve = getCurve(pname + suffix);
 				if (xCurve != null)
 					if (pname.indexOf("Rotation") >= 0 || pname.indexOf("Offset") >= 0)
-						return vAdd(vAdd(xVal, randVal), VCurve(xCurve));
+						return vAdd(vAdd(xVal, randVal), VCurve(xCurve.curve));
 					else
-						return vMult(vAdd(xVal, randVal), VCurve(xCurve));
+						return vMult(vAdd(xVal, randVal), VCurve(xCurve.curve));
 				else
 					return vAdd(xVal, randVal);
 			}
@@ -1351,10 +1351,10 @@ class Emitter extends Object3D {
 		}
 
 		function makeColor(scope: Prefab, name: String) {
-			var curves = hrt.prefab.Curve.getCurves(scope, name);
+			var curves = hrt.prefab.CurvePrefab.getCurves(scope, name);
 			if(curves == null || curves.length == 0)
 				return null;
-			return hrt.prefab.Curve.getColorValue(curves);
+			return hrt.prefab.CurvePrefab.getColorValue(curves);
 		}
 
 		if(template != null) {

@@ -40,8 +40,8 @@ class Evaluator {
 			case VZero: return 0.0;
 			case VOne: return 1.0;
 			case VConst(v): return v;
-			case VCurve(c): return c.getVal(time);
-			case VCurveScale(c, scale): return c.getVal(time) * scale;
+			case VCurve(c): return c.evaluate(time);
+			case VCurveScale(c, scale): return c.evaluate(time) * scale;
 			case VRandom(idx, scale):
 				var len = randValues.length;
 				while(idx >= len) {

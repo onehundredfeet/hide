@@ -7,6 +7,8 @@ class Component {
 	public var element(default,null) : Element;
 	public var saveDisplayKey : String;
 
+	var _parent : Element;
+
 	function new(parent:Element,el:Element) {
 		ide = hide.Ide.inst;
 		if( el == null )
@@ -14,6 +16,7 @@ class Component {
 		this.element = el;
 		if( parent != null )
 			parent.append(element);
+		_parent = parent;
 	}
 
 	public function remove() {

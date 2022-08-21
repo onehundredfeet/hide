@@ -1,3 +1,9 @@
+# Important Notice
+This is a derivative of the excellent HIDE editor for Haxe (https://github.com/HeapsIO/hide)
+
+It adds the following features:
+- 
+
 # Hide
 
 [![CI](https://img.shields.io/github/workflow/status/HeapsIO/hide/CI.svg?logo=github)](https://github.com/HeapsIO/hide/actions?query=workflow%3ACI)
@@ -24,7 +30,7 @@ If you don't want to build Hide from source, you can download a nightly build fr
 - Install these libraries:
 ```
 haxelib git heaps https://github.com/HeapsIO/heaps
-haxelib git castle https://github.com/ncannasse/castle
+haxelib git castledbx https://github.com/onehundredfeet/castledbx
 haxelib git hxbit https://github.com/ncannasse/hxbit
 haxelib git hscript https://github.com/HaxeFoundation/hscript
 haxelib git hxnodejs https://github.com/HaxeFoundation/hxnodejs
@@ -40,7 +46,7 @@ haxelib git hx3compat https://github.com/HaxeFoundation/hx3compat
 
 #### 3. Install NWJS
 - Download and copy [NWJS](https://nwjs.io/) SDK into the `/bin/nwjs` directory
-- On OSX, copy all files from `bin` into the `bin/nwjs.app/Contents/Resources/app.nw` folder
+- On OSX, copy all files from `bin` into the `bin/nwjs.app/Contents/Resources/app.nw` folder or make a link to update automatically
 
 ## Running
 

@@ -56,6 +56,10 @@ class ModalColumnForm extends Modal {
 				<option value="layer">Data Layer</option>
 				<option value="tilelayer">Tile Layer</option>
 				<option value="custom">Custom Type</option>
+				<option value="float2">Float2</option>
+				<option value="float3">Float3</option>
+				<option value="float4">float4</option>
+				<option value="curve">Curve</option>
 				</select>
 				</tr>
 
@@ -337,6 +341,14 @@ class ModalColumnForm extends Modal {
 			TTilePos;
 		case "tilelayer":
 			TTileLayer;
+		case "float2":
+			TFloat2;
+		case "float3":
+			TFloat3;
+		case "float4":
+			TFloat4;
+		case "curve":
+			TCurve;
 		case "dynamic":
 			TDynamic;
 		case "properties":

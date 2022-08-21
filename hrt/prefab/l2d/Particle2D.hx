@@ -94,8 +94,8 @@ class Particle2D extends Object2D {
 		particles2d.visible = visible;
 
 		function makeVal(name, def ) : Value {
-			var c = Curve.getCurve(this, name);
-			return c != null ? VCurve(c) : def;
+			var c = CurvePrefab.getCurve(this, name);
+			return c != null ? VCurve(c.curve) : def;
 		}
 
 		if (paramsParticleGroup != null) {

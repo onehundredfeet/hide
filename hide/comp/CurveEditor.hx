@@ -1,6 +1,9 @@
 package hide.comp;
+import hrt.prefab.CurvePrefab;
+import cdb.Curve;
 
-typedef CurveKey = hrt.prefab.Curve.CurveKey;
+typedef CurveKey = cdb.Curve.CurveKey;
+typedef CurveListener = (CurveEditor)->Void;
 
 class CurveEditor extends Component {
 
@@ -9,8 +12,10 @@ class CurveEditor extends Component {
 	public var xOffset = 0.;
 	public var yOffset = 0.;
 
-	public var curve(default, set) : hrt.prefab.Curve;
+	public var curve(default, set) : cdb.Curve.Curve;
+	public var prefab : CurvePrefab;
 	public var undo : hide.ui.UndoHistory;
+	public var listener: CurveListener;
 
 	public var lockViewX = false;
 	public var lockViewY = false;
@@ -25,9 +30,11 @@ class CurveEditor extends Component {
 	var gridGroup : Element;
 	var graphGroup : Element;
 	var selectGroup : Element;
-
+	var paramsGroup : Element;
 	var refreshTimer : haxe.Timer = null;
 	var lastValue : Dynamic;
+
+	public function value() return lastValue;
 
 	var selectedKeys: Array<CurveKey> = [];
 	var previewKeys: Array<CurveKey> = [];
@@ -38,13 +45,16 @@ class CurveEditor extends Component {
 		element.addClass("hide-curve-editor");
 		element.attr({ tabindex: "1" });
 		element.css({ width: "100%", height: "100%" });
-		svg = new hide.comp.SVG(element);
+		
 		var div = this.element;
+
+		var graphDiv = new Element('<div></div>').appendTo(div);
+		paramsGroup = new Element('<div class="graphparams"></div>').appendTo(div);
+		createScaleOffset().appendTo(paramsGroup);
+		svg = new hide.comp.SVG(graphDiv);
 		var root = svg.element;
-		height = Math.round(svg.element.height());
-		if(height == 0 && parent != null)
-			height = Math.round(parent.height());
-		width = Math.round(svg.element.width());
+
+		fetchWidthAndHeight();
 
 		gridGroup = svg.group(root, "grid");
 		graphGroup = svg.group(root, "graph");
@@ -68,6 +78,10 @@ class CurveEditor extends Component {
 				}
 			}
 			else if(e.which == 2) {
+				// Pan
+				startPan(e);
+			}
+			else if(e.which == 3) {
 				// Pan
 				startPan(e);
 			}
@@ -120,6 +134,44 @@ class CurveEditor extends Component {
 		});
 	}
 
+	function createScaleOffset() : Element{
+		var div = new Element('<div></div>');
+		if (this.curve != null) {
+			var scale = new Element('<div class="line"><label>Scale</label><input class="scale" type="number" value="-1" step="0.01"/></div>').appendTo(div);
+			var offset = new Element('<div class="line"><label>Offset</label><input class="offset" type="number" value="-1" step="0.01"/></div>').appendTo(div);
+	
+			var scaleel = scale.find(".scale");
+				scaleel.val(hxd.Math.fmt(curve.scale));
+				scaleel.change(function(e) {
+					var f = Std.parseFloat(scaleel.val());
+					trace("Changing scale " + f);
+					if(f != null) {
+						beforeChange();
+						curve.scale = f;
+						afterChange();
+					}
+				});
+
+				var offsetEl = offset.find(".offset");
+				offsetEl.val(hxd.Math.fmt(curve.offset));
+				offsetEl.change(function(e) {
+					var f = Std.parseFloat(offset.val());
+					trace("Changing offset " + f);
+					if(f != null) {
+						beforeChange();
+						curve.offset = f;
+						afterChange();
+					}
+				});
+		}
+		else {
+			new Element('<label>No curve</label>').appendTo(div);
+		}
+
+
+		return div;
+	}
+
 	public dynamic function onChange(anim: Bool) {
 
 	}
@@ -128,7 +180,17 @@ class CurveEditor extends Component {
 
 	}
 
-	function set_curve(curve: hrt.prefab.Curve) {
+	function set_prefab(prefab: CurvePrefab) {
+		this.prefab;
+		curve = prefab.curve;
+
+		return this.prefab;
+	}
+	function set_curve(curve: cdb.Curve.Curve) {
+		if (curve == null) {
+			throw "Can't set a null curve";
+		}
+
 		this.curve = curve;
 		maxLength = curve.maxTime;
 		lastValue = haxe.Json.parse(haxe.Json.stringify(curve.save()));
@@ -146,7 +208,10 @@ class CurveEditor extends Component {
 		else {
 			zoomAll();
 		}
+
+		
 		refresh();
+
 		return curve;
 	}
 
@@ -173,11 +238,11 @@ class CurveEditor extends Component {
 
 		inline function addPrevH() {
 			if(key.prevHandle == null)
-				key.prevHandle = new hrt.prefab.Curve.CurveHandle(prev != null ? (prev.time - key.time) / 3 : -0.5, 0);
+				key.prevHandle = new cdb.Curve.CurveHandle(prev != null ? (prev.time - key.time) / 3 : -0.5, 0);
 		}
 		inline function addNextH() {
 			if(key.nextHandle == null)
-				key.nextHandle = new hrt.prefab.Curve.CurveHandle(next != null ? (next.time - key.time) / 3 : -0.5, 0);
+				key.nextHandle = new cdb.Curve.CurveHandle(next != null ? (next.time - key.time) / 3 : -0.5, 0);
 		}
 		switch(key.mode) {
 			case Aligned:
@@ -269,6 +334,7 @@ class CurveEditor extends Component {
 			xScale: xScale,
 			yScale: yScale
 		});
+
 	}
 
 	function startPan(e) {
@@ -289,6 +355,7 @@ class CurveEditor extends Component {
 		});
 	}
 
+	
 	public function setPan(xoff, yoff) {
 		xOffset = xoff;
 		yOffset = yoff;
@@ -308,8 +375,17 @@ class CurveEditor extends Component {
 		xOffset = xMin;
 	}
 
+	public function getBounds() {
+		// TODO: Take bezier handles into account
+		var ret = new h2d.col.Bounds();
+		for(k in curve.keys) {
+			ret.addPos(k.time, k.value);
+		}
+		return ret;
+	}
+
 	public function zoomAll() {
-		var bounds = curve.getBounds();
+		var bounds = getBounds();
 		if(bounds.width <= 0) {
 			bounds.xMin = 0.0;
 			bounds.xMax = 1.0;
@@ -351,6 +427,7 @@ class CurveEditor extends Component {
 	}
 
 	function copyKey(key: CurveKey): CurveKey {
+		
 		return cast haxe.Json.parse(haxe.Json.stringify(key));
 	}
 
@@ -359,6 +436,7 @@ class CurveEditor extends Component {
 	}
 
 	function afterChange() {
+
 		var newVal = haxe.Json.parse(haxe.Json.stringify(curve.save()));
 		var oldVal = lastValue;
 		undo.change(Custom(function(undo) {
@@ -372,21 +450,45 @@ class CurveEditor extends Component {
 			selectedKeys = [];
 			refresh();
 			onChange(false);
+			if (listener != null) {
+				listener(this);
+			}
 		}));
+		lastValue = haxe.Json.parse(haxe.Json.stringify(curve.save()));
 		refresh();
 		onChange(false);
+		if (listener != null) {
+			listener(this);
+		}
 	}
 
 	public function refresh(?anim: Bool) {
+		paramsGroup.empty();
+		paramsGroup.append(createScaleOffset());
+
 		refreshGrid();
 		refreshGraph(anim);
-		if(!anim)
+		if(!anim) 
 			saveView();
 	}
 
-	public function refreshGrid() {
+	function fetchWidthAndHeight() {
 		width = Math.round(svg.element.width());
 		height = Math.round(svg.element.height());
+
+		if(height == 0 && _parent != null)
+			height = Math.round(_parent.height());
+
+		if(width == 0 && _parent != null)
+			width = Math.round(_parent.width());
+
+
+		if (height == 0) height = Math.round(200 );
+		if (width == 0) width = Math.round(200 );
+	}
+	
+	public function refreshGrid() {
+		fetchWidthAndHeight();
 
 		gridGroup.empty();
 		var minX = Math.floor(ixt(0));
@@ -511,7 +613,7 @@ class CurveEditor extends Component {
 				}, 0);
 			});
 
-			function setMode(m: hrt.prefab.Curve.CurveKeyMode) {
+			function setMode(m: cdb.Curve.CurveKeyMode) {
 				key.mode = m;
 				curve.keyMode = m;
 				fixKey(key);
@@ -533,9 +635,9 @@ class CurveEditor extends Component {
 			xel.change(function(e) {
 				var f = Std.parseFloat(xel.val());
 				if(f != null) {
-					undo.change(Field(key, "time", key.time), afterEdit);
+					beforeChange();
 					key.time = f;
-					afterEdit();
+					afterChange();
 				}
 			});
 			var yel = popup.find(".y");
@@ -543,9 +645,9 @@ class CurveEditor extends Component {
 			yel.change(function(e) {
 				var f = Std.parseFloat(yel.val());
 				if(f != null) {
-					undo.change(Field(key, "value", key.value), afterEdit);
+					beforeChange();
 					key.value = f;
-					afterEdit();
+					afterChange();
 				}
 			});
 			popup.find("input").first().focus();

@@ -1,6 +1,7 @@
 package hrt.prefab.fx;
-import hrt.prefab.Curve;
+import hrt.prefab.CurvePrefab;
 import hrt.prefab.Prefab as PrefabElement;
+import cdb.Curve;
 
 typedef ShaderParam = {
 	idx: Int,
@@ -128,14 +129,14 @@ class BaseFX extends hrt.prefab.Library {
 			if(prop == null)
 				prop = hrt.prefab.DynamicShader.getDefault(v.type);
 
-			var curves = Curve.getCurves(shaderElt, v.name);
+			var curves = CurvePrefab.getCurves(shaderElt, v.name);
 			if(curves == null || curves.length == 0)
 				continue;
 
 			switch(v.type) {
 				case TVec(_, VFloat) :
 					var isColor = v.name.toLowerCase().indexOf("color") >= 0;
-					var val = isColor ? Curve.getColorValue(curves) : Curve.getVectorValue(curves);
+					var val = isColor ? CurvePrefab.getColorValue(curves) : CurvePrefab.getVectorValue(curves);
 					ret.push({
 						idx: paramCount - 1,
 						def: v,
@@ -146,10 +147,13 @@ class BaseFX extends hrt.prefab.Library {
 					var base = 1.0;
 					if(Std.isOfType(prop, Float) || Std.isOfType(prop, Int))
 						base = cast prop;
-					var curve = Curve.getCurve(shaderElt, v.name);
+					var curve = CurvePrefab.getCurve(shaderElt, v.name);
 					var val = Value.VConst(base);
 					if(curve != null)
-						val = Value.VCurveScale(curve, base);
+						if (base != 0.0)
+							val = Value.VCurveScale(curve.curve, base);
+						else
+							val = Value.VCurve(curve.curve);
 					ret.push({
 						idx: paramCount - 1,
 						def: v,

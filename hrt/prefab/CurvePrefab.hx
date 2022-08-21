@@ -1,6 +1,169 @@
 package hrt.prefab;
+using cdb.Curve;
 using Lambda;
 
+class CurvePrefab extends Prefab {
+
+	public var curve : Curve;
+	
+	public function new(?parent) {
+		super(parent);
+		this.type = "curve";
+		curve = new Curve();
+	}
+
+	public override function load(o:Dynamic) {
+		// This is wrong.
+		super.load(o);
+		curve.load(o);
+	}
+
+	public override function save() {
+		var obj = super.save();
+
+		curve.save(obj);
+		
+		return obj;
+	}
+
+	public function getBounds() {
+		// TODO: Take bezier handles into account
+		var ret = new h2d.col.Bounds();
+		for(k in curve.keys) {
+			ret.addPos(k.time, k.value);
+		}
+		return ret;
+	}
+	#if editor
+	override function edit( ctx : EditContext ) {
+		super.edit(ctx);
+		ctx.properties.add(new hide.Element('
+		<div class="group" name="Parameters">
+			<dl>
+				<dt>Loop curve</dt><dd><input type="checkbox" field="loop"/></dd>
+			</dl>
+		</div>'), this, function(pname) {
+			ctx.onChange(this, pname);
+		});
+
+		var ce = new hide.comp.CurveEditor(ctx.properties.undo, ctx.properties.element);
+		ce.curve = curve;
+	}
+
+	override function getHideProps() : HideProps {
+		return { icon : "paint-brush", name : "Curve" };
+	}
+	#end
+	
+
+	public static function getCurve(parent : Prefab, name: String, onlyEnabled=true) {
+		for(c in parent.children) {
+			if(onlyEnabled && !c.enabled) continue;
+			if(c.name != name) continue;
+			var curve = c.to(CurvePrefab);
+			if(curve == null) continue;
+			return curve;
+		}
+		return null;
+	}
+
+	public static function getCurves(parent: Prefab, prefix: String) {
+		var ret = null;
+		for(c in parent.children) {
+			if(!c.enabled) continue;
+			var idx = c.name.indexOf(".");
+			var curvePrefix = (idx >= 0) ? c.name.substr(0, idx) : c.name;
+			if(curvePrefix != prefix)
+				continue;
+			var curve = c.to(CurvePrefab);
+			if(curve == null) continue;
+			if (ret == null) ret = [];
+			ret.push(curve);
+		}
+		return ret;
+	}
+
+	public static function getGroups(curves: Array<CurvePrefab>) {
+		var groups : Array<{name: String, items: Array<CurvePrefab>}> = [];
+		for(c in curves) {
+			var prefix = c.name.split(".")[0];
+			var g = groups.find(g -> g.name == prefix);
+			if(g == null) {
+				groups.push({
+					name: prefix,
+					items: [c]
+				});
+			}
+			else {
+				g.items.push(c);
+			}
+		}
+		return groups;
+	}
+
+
+	static inline function findCurve(curves: Array<CurvePrefab>, suffix: String) {
+		return curves.find(c -> StringTools.endsWith(c.name, suffix));
+	}
+
+	public static function getVectorValue(curves: Array<CurvePrefab>, defVal: Float=0.0, scale: Float=1.0) : hrt.prefab.fx.Value {
+		inline function find(s) {
+			return findCurve(curves, s);
+		}
+		var x = find(".x");
+		var y = find(".y");
+		var z = find(".z");
+		var w = find(".w");
+
+		inline function curveOrVal(c: CurvePrefab, defVal: Float) : hrt.prefab.fx.Value {
+			return c != null ? (scale != 1.0 ? VCurveScale(c.curve, scale) : VCurve(c.curve)) : VConst(defVal);
+		}
+
+		return VVector(
+			curveOrVal(x, defVal),
+			curveOrVal(y, defVal),
+			curveOrVal(z, defVal),
+			curveOrVal(w, 1.0));
+	}
+
+	public static function getColorValue(curves: Array<CurvePrefab>) : hrt.prefab.fx.Value {
+		inline function find(s) {
+			return findCurve(curves, s);
+		}
+
+		var r = find(".r");
+		var g = find(".g");
+		var b = find(".b");
+		var a = find(".a");
+		var h = find(".h");
+		var s = find(".s");
+		var l = find(".l");
+
+		if(h != null || s != null || l != null) {
+			return VHsl(
+				h != null ? VCurve(h.curve) : VConst(0.0),
+				s != null ? VCurve(s.curve) : VConst(1.0),
+				l != null ? VCurve(l.curve) : VConst(1.0),
+				a != null ? VCurve(a.curve) : VConst(1.0));
+		}
+
+		if(a != null && r == null && g == null && b == null)
+			return VCurve(a.curve);
+
+		if(a == null && r == null && g == null && b == null)
+			return VOne; // White by default
+
+		return VVector(
+			r != null ? VCurve(r.curve) : VConst(1.0),
+			g != null ? VCurve(g.curve) : VConst(1.0),
+			b != null ? VCurve(b.curve) : VConst(1.0),
+			a != null ? VCurve(a.curve) : VConst(1.0));
+	}
+
+	static var _ = Library.register("curve", CurvePrefab);
+}
+
+/*
 class CurveHandle {
 	public var dt: Float;
 	public var dv: Float;
@@ -27,9 +190,8 @@ class CurveKey {
 }
 
 typedef CurveKeys = Array<CurveKey>;
-
-class Curve extends Prefab {
-
+*/
+	/*
 	@:s public var keyMode : CurveKeyMode = Linear;
 	@:c public var keys : CurveKeys = [];
 	@:c public var previewKeys : CurveKeys = [];
@@ -43,10 +205,7 @@ class Curve extends Prefab {
 		return keys[keys.length-1].time;
 	}
 
-   	public function new(?parent) {
-		super(parent);
-		this.type = "curve";
-	}
+
 
 	public override function load(o:Dynamic) {
 		super.load(o);
@@ -132,14 +291,7 @@ class Curve extends Prefab {
 		return key;
 	}
 
-	public function getBounds() {
-		// TODO: Take bezier handles into account
-		var ret = new h2d.col.Bounds();
-		for(k in keys) {
-			ret.addPos(k.time, k.value);
-		}
-		return ret;
-	}
+
 
 	public function getVal(time: Float) : Float {
 		switch(keys.length) {
@@ -256,130 +408,7 @@ class Curve extends Prefab {
 		return vals;
 	}
 
-	#if editor
-	override function edit( ctx : EditContext ) {
-		super.edit(ctx);
-		ctx.properties.add(new hide.Element('
-		<div class="group" name="Parameters">
-			<dl>
-				<dt>Loop curve</dt><dd><input type="checkbox" field="loop"/></dd>
-			</dl>
-		</div>'), this, function(pname) {
-			ctx.onChange(this, pname);
-		});
+	
 
-		var ce = new hide.comp.CurveEditor(ctx.properties.undo, ctx.properties.element);
-		ce.curve = this;
-	}
-
-	override function getHideProps() : HideProps {
-		return { icon : "paint-brush", name : "Curve" };
-	}
-	#end
-
-	public static function getCurve(parent : Prefab, name: String, onlyEnabled=true) {
-		for(c in parent.children) {
-			if(onlyEnabled && !c.enabled) continue;
-			if(c.name != name) continue;
-			var curve = c.to(Curve);
-			if(curve == null) continue;
-			return curve;
-		}
-		return null;
-	}
-
-	public static function getCurves(parent: Prefab, prefix: String) {
-		var ret = null;
-		for(c in parent.children) {
-			if(!c.enabled) continue;
-			var idx = c.name.indexOf(".");
-			var curvePrefix = (idx >= 0) ? c.name.substr(0, idx) : c.name;
-			if(curvePrefix != prefix)
-				continue;
-			var curve = c.to(Curve);
-			if(curve == null) continue;
-			if (ret == null) ret = [];
-			ret.push(curve);
-		}
-		return ret;
-	}
-
-	public static function getGroups(curves: Array<Curve>) {
-		var groups : Array<{name: String, items: Array<Curve>}> = [];
-		for(c in curves) {
-			var prefix = c.name.split(".")[0];
-			var g = groups.find(g -> g.name == prefix);
-			if(g == null) {
-				groups.push({
-					name: prefix,
-					items: [c]
-				});
-			}
-			else {
-				g.items.push(c);
-			}
-		}
-		return groups;
-	}
-
-
-	static inline function findCurve(curves: Array<Curve>, suffix: String) {
-		return curves.find(c -> StringTools.endsWith(c.name, suffix));
-	}
-
-	public static function getVectorValue(curves: Array<Curve>, defVal: Float=0.0, scale: Float=1.0) : hrt.prefab.fx.Value {
-		inline function find(s) {
-			return findCurve(curves, s);
-		}
-		var x = find(".x");
-		var y = find(".y");
-		var z = find(".z");
-		var w = find(".w");
-
-		inline function curveOrVal(c: Curve, defVal: Float) : hrt.prefab.fx.Value {
-			return c != null ? (scale != 1.0 ? VCurveScale(c, scale) : VCurve(c)) : VConst(defVal);
-		}
-
-		return VVector(
-			curveOrVal(x, defVal),
-			curveOrVal(y, defVal),
-			curveOrVal(z, defVal),
-			curveOrVal(w, 1.0));
-	}
-
-	public static function getColorValue(curves: Array<Curve>) : hrt.prefab.fx.Value {
-		inline function find(s) {
-			return findCurve(curves, s);
-		}
-
-		var r = find(".r");
-		var g = find(".g");
-		var b = find(".b");
-		var a = find(".a");
-		var h = find(".h");
-		var s = find(".s");
-		var l = find(".l");
-
-		if(h != null || s != null || l != null) {
-			return VHsl(
-				h != null ? VCurve(h) : VConst(0.0),
-				s != null ? VCurve(s) : VConst(1.0),
-				l != null ? VCurve(l) : VConst(1.0),
-				a != null ? VCurve(a) : VConst(1.0));
-		}
-
-		if(a != null && r == null && g == null && b == null)
-			return VCurve(a);
-
-		if(a == null && r == null && g == null && b == null)
-			return VOne; // White by default
-
-		return VVector(
-			r != null ? VCurve(r) : VConst(1.0),
-			g != null ? VCurve(g) : VConst(1.0),
-			b != null ? VCurve(b) : VConst(1.0),
-			a != null ? VCurve(a) : VConst(1.0));
-	}
-
-	static var _ = Library.register("curve", Curve);
-}
+	
+*/
