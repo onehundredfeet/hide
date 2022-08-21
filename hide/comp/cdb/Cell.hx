@@ -36,10 +36,16 @@ class Cell extends Component {
 	function createCurveEditor( curve : Curve, normalized:Bool, parent ) : CurveEditor {
 		//var dispKey = getPath() + "/" + curve.getAbsPath(true);
 		var curveContainer = new Element('<div class="curve"></div>').appendTo(parent);
+
+		curveContainer.width("100%");
+		curveContainer.height("100%");
+
+	/*
 		var height = 230;
 		if(height == null) height = 230;
 		if(height < minHeight) height = minHeight;
 		curveContainer.height(height);
+		*/
 		var curveEdit = new hide.comp.CurveEditor(editor.undo, curveContainer);
 		curveEdit.listener = curveUpdate;
 		curveEdit.curve = curve;
@@ -68,6 +74,8 @@ class Cell extends Component {
 				e.stopPropagation();
 			}
 		});
+
+		curveEdit.refresh();
 
 		return curveEdit;
 	}
@@ -117,6 +125,10 @@ class Cell extends Component {
 			element.click(function(_) edit());
 		// <Curve Editor>
 		case TCurve:
+			
+			element.dblclick(function(_) {
+				var modal = new hide.comp.cdb.ModalCurveEditor(this, curve, editor, line.table.getRealSheet(), column, editor.element);
+			});
 		// </Curve Editor>
 		default:
 			if( canEdit() )
@@ -142,6 +154,8 @@ class Cell extends Component {
 			e.preventDefault();
 		});
 		// <Curve Editor>
+		} else {
+			curveEditor.refreshGrid();
 		}
 		// </Curve Editor>
 	}

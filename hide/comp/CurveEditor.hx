@@ -39,6 +39,10 @@ class CurveEditor extends Component {
 	var selectedKeys: Array<CurveKey> = [];
 	var previewKeys: Array<CurveKey> = [];
 
+	public function setGraphSize( w : String, h : String ) {
+		svg.element.width(w);
+		svg.element.height(h);
+	}
 	public function new(undo, ?parent) {
 		super(parent,null);
 		this.undo = undo;
@@ -49,10 +53,18 @@ class CurveEditor extends Component {
 		var div = this.element;
 
 		var graphDiv = new Element('<div></div>').appendTo(div);
+		graphDiv.width("100%");
+		graphDiv.height("calc(100% - 40px)");
+		
 		paramsGroup = new Element('<div class="graphparams"></div>').appendTo(div);
+//		paramsGroup.height("20");
+		paramsGroup.width("100%");
+
 		createScaleOffset().appendTo(paramsGroup);
 		svg = new hide.comp.SVG(graphDiv);
 		var root = svg.element;
+		root.width("100%");
+		root.height("100%");
 
 		fetchWidthAndHeight();
 
@@ -417,13 +429,19 @@ class CurveEditor extends Component {
 	function startDrag(onMove: js.jquery.Event->Void, onStop: js.jquery.Event->Void) {
 		var el = new Element(element[0].ownerDocument.body);
 		el.on("mousemove.curveeditor", onMove);
-		el.on("mouseup.curveeditor", function(e: js.jquery.Event) {
+
+		function turnOff( e: js.jquery.Event ) {
+			element.off("mouseup.curveeditor");
 			el.off("mousemove.curveeditor");
 			el.off("mouseup.curveeditor");
 			e.preventDefault();
-			e.stopPropagation();
+			e.stopImmediatePropagation();
 			onStop(e);
-		});
+		}
+
+		el.on("mouseup.curveeditor", turnOff);
+		element.on("mouseup.curveeditor", turnOff);
+
 	}
 
 	function copyKey(key: CurveKey): CurveKey {
@@ -473,6 +491,8 @@ class CurveEditor extends Component {
 	}
 
 	function fetchWidthAndHeight() {
+		width = 0;
+		height = 0;
 		width = Math.round(svg.element.width());
 		height = Math.round(svg.element.height());
 

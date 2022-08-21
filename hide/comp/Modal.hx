@@ -9,9 +9,9 @@ class Modal extends Component {
 	public function new(?parent,?el) {
 		super(parent,el);
 		element.addClass('hide-modal');
-		element.on("click dblclick keydown keyup keypressed mousedown mouseup mousewheel",function(e) e.stopPropagation());
 		content = new Element("<div class='content'></div>").appendTo(element);
 
+		element.on("click dblclick keydown keyup keypressed mousedown mouseup mousewheel",function(e) e.stopPropagation());
 		var exterior = [element[0], content[0]];
 		element[0].addEventListener("mousedown", function(e) {
 			downTarget = e.target;
