@@ -59,6 +59,7 @@ class ModalCurveEditor extends Modal {
 
 		_curveEditor.listener = curveUpdate;
 		_curveEditor.curve = curve;
+//        _curveEditor.zoomAll();
 
 		_curveEditor.xOffset = 0.0;
 		_curveEditor.yOffset = 0.0;
