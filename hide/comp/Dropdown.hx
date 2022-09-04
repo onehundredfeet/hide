@@ -1,4 +1,5 @@
 package hide.comp;
+using hide.tools.Extensions;
 
 typedef Choice = {
 	var id: String;
@@ -13,6 +14,7 @@ class Dropdown extends Component {
 	var optionsCont : Element;
 	public var filterInput : Element;
 	var options : Array<Choice>;
+	var orderedOptions : Array<Choice>;
 
 	public function new( parent, options : Array<Choice>, currentValue: String, ?buildIcon : (Choice) -> Element ) {
 		var root = new Element('<div class="hide-dropdown">
@@ -22,11 +24,11 @@ class Dropdown extends Component {
 			</div>
 		</div>');
 		this.options = options;
+		this.orderedOptions = options.copy();
 		filterInput = root.find("#filter").first();
 
 		optionsCont = root.find(".options").first();
-		for( i in 0...options.length ) {
-			var o = options[i];
+		for( o in options ) {
 			var el = new Element('<div tabindex="-1" class="dropdown-option">
 				<p class="option-text">${StringTools.htmlEscape(o.text)}</p>
 			</div>');
@@ -46,10 +48,18 @@ class Dropdown extends Component {
 			el.data("text", o.text);
 			el.click((_) -> applyValue(o.id));
 			el.mousemove(function(_) {
-				highlightIndex = i;
+				highlightIndex = orderedOptions.indexOf(o);
 				refreshHighlight();
 			});
 			optionsCont.append(el);
+		}
+
+		function sorter(t1, id1, t2, id2, filter: String) {
+			var m1 = getMatchingScore(t1, filter);
+			var m2 = getMatchingScore(t2, filter);
+			if (m1 != m2)
+				return m1 - m2;
+			return options.findIndex(o -> o.id == id1) - options.findIndex(o -> o.id == id2);
 		}
 
 		filterInput.on("input", (e : js.jquery.Event) -> {
@@ -58,6 +68,10 @@ class Dropdown extends Component {
 				for( o in optionsCont.children().elements() ) {
 					o.toggleClass("hidden", !matches(o.data("text"), v) && !matches(o.data("id"), v));
 				}
+				var sortedChildren = optionsCont.children().elements().toArray();
+				sortedChildren.sort((a, b) -> sorter(a.data("text"), a.data("id"), b.data("text"), b.data("id"), v));
+				orderedOptions.sort((a, b) -> sorter(a.text, a.id, b.text, b.id, v));
+				optionsCont.append(sortedChildren);
 			}
 			resetHighlight();
 		});
@@ -118,18 +132,24 @@ class Dropdown extends Component {
 		untyped optionsCont.children().get(highlightIndex).scrollIntoViewIfNeeded();
 	}
 
-	function matches( text : String, filter : String ) {
+	function getMatchingScore( text : String, filter : String ) {
 		if (text == null || filter == null)
-			return false;
+			return -1;
 		text = text.toLowerCase();
 		filter = filter.toLowerCase();
-		if( text.indexOf(filter) >= 0 )
-			return true;
+		var i = text.indexOf(filter);
+		if( i >= 0 )
+			return i;
 		text.split("_").join("").split(" ").join("");
 		filter.split(" ").join("");
-		if( text.indexOf(filter) >= 0 )
-			return true;
-		return false;
+		i = text.indexOf(filter);
+		if( i >= 0 )
+			return i;
+		return -1;
+	}
+
+	function matches( text : String, filter : String ) {
+		return getMatchingScore(text, filter) >= 0;
 	}
 
 	function onKey( e : js.jquery.Event ) {
@@ -175,7 +195,7 @@ class Dropdown extends Component {
 				return false;
 			case hxd.Key.ENTER:
 				if (highlightIndex != null) {
- 					applyValue(options[highlightIndex].id);
+ 					applyValue(orderedOptions[highlightIndex].id);
 					return false;
 				}
 			case hxd.Key.ESCAPE:
