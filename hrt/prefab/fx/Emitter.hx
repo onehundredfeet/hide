@@ -1,4 +1,6 @@
 package hrt.prefab.fx;
+import hrt.shader.BaseEmitter;
+import hrt.impl.Gradient;
 import hrt.prefab.l3d.Polygon;
 import hrt.prefab.CurvePrefab;
 import hrt.prefab.fx.BaseFX.ShaderAnimation;
@@ -192,6 +194,7 @@ private class ParticleInstance  {
 	public var speedAccumulation = new h3d.Vector();
 	public var colorMult : h3d.Vector;
 	public var distToCam = 0.0;
+	public var random : Float;
 
 	public var orientation = new h3d.Quat();
 
@@ -208,6 +211,7 @@ private class ParticleInstance  {
 		startFrame = 0;
 		speedAccumulation.set(0,0,0);
 		orientation.identity();
+		random = hxd.Math.random();
 
 		switch(emitter.simulationSpace){
 			// Particles in Local are spawned next to emitter in the scene tree,
@@ -471,8 +475,10 @@ class EmitterObject extends h3d.scene.Object {
 	public var useCollision : Bool = false;
 	// RANDOM COLOR
 	public var useRandomColor : Bool = false;
+	public var useRandomGradient : Bool = false;
 	public var randomColor1 : h3d.Vector;
 	public var randomColor2 : h3d.Vector;
+	public var randomGradient : GradientData;
 
 	public var invTransform = new h3d.Matrix();
 	public var screenQuat = new h3d.Quat();
@@ -487,6 +493,7 @@ class EmitterObject extends h3d.scene.Object {
 	var evaluator : Evaluator;
 	var vecPool = new Evaluator.VecPool();
 	var numInstances = 0;
+	var baseEmitterShader : hrt.shader.BaseEmitter = null;
 	var animatedTextureShader : h3d.shader.AnimatedTexture = null;
 	var colorMultShader : h3d.shader.ColorMult = null;
 
@@ -598,9 +605,14 @@ class EmitterObject extends h3d.scene.Object {
 			part.lifeTime = hxd.Math.max(0.01, lifeTime + random.srand(lifeTimeRand));
 
 			if(useRandomColor) {
-				var col = new h3d.Vector();
-				col.lerp(randomColor1, randomColor2, random.rand());
-				part.colorMult = col;
+				if (useRandomGradient) {
+					part.colorMult = Gradient.evalData(randomGradient, random.rand());
+				}
+				else {
+					var col = new h3d.Vector();
+					col.lerp(randomColor1, randomColor2, random.rand());
+					part.colorMult = col;
+				}
 			}
 
 			tmpQuat.identity();
@@ -761,6 +773,9 @@ class EmitterObject extends h3d.scene.Object {
 				mesh.material.mainPass.addShader(animatedTextureShader);
 			}
 
+			baseEmitterShader = new hrt.shader.BaseEmitter();
+			mesh.material.mainPass.addShader(baseEmitterShader);
+
 			if(useRandomColor) {
 				colorMultShader = new h3d.shader.ColorMult();
 				mesh.material.mainPass.addShader(colorMultShader);
@@ -770,6 +785,14 @@ class EmitterObject extends h3d.scene.Object {
 				batch = new h3d.scene.MeshBatch(meshPrim, mesh.material, this);
 				batch.name = "batch";
 			}
+
+			/*trace("Shaders for " + this.name);
+			@:privateAccess var shaderEntry = mesh.material.mainPass.shaders;
+			while(shaderEntry != null) {
+				trace(shaderEntry.s);
+				shaderEntry = shaderEntry.next;
+			}*/
+
 			template.local3d.remove();
 		}
 	}
@@ -956,6 +979,11 @@ class EmitterObject extends h3d.scene.Object {
 				animatedTextureShader.startTime = p.startTime;
 				animatedTextureShader.startFrame = p.startFrame;
 			}
+
+			baseEmitterShader.life = p.life;
+			baseEmitterShader.lifeTime = p.lifeTime;
+			baseEmitterShader.random = p.random;
+
 			if(colorMultShader != null)
 				colorMultShader.color = p.colorMult;
 			batch.emitInstance();
@@ -1125,8 +1153,10 @@ class Emitter extends Object3D {
 		{ name: "alignLockAxis", t: PEnum(AlignLockAxis), def: AlignLockAxis.ScreenZ, disp: "Lock Axis", groupName : "Alignment" },
 		// COLOR
 		{ name: "useRandomColor", t: PBool, def: false, disp: "Random Color", groupName : "Color" },
+		{ name: "useRandomGradient", t: PBool, def: false, disp: "Random Gradient", groupName : "Color" },
 		{ name: "randomColor1", t: PVec(4), disp: "Color 1", def : [0,0,0,1], groupName : "Color" },
 		{ name: "randomColor2", t: PVec(4), disp: "Color 2", def : [1,1,1,1], groupName : "Color" },
+		{ name: "randomGradient", t:PGradient, disp: "Gradient", def: Gradient.getDefaultGradientData(), groupName : "Color" },
 		// ANIMATION
 		{ name: "spriteSheet", t: PFile(["jpg","png"]), def: null, groupName : "Animation", disp: "Sheet" },
 		{ name: "frameCount", t: PInt(0), def: 0, groupName : "Animation", disp: "Frames" },
@@ -1421,8 +1451,11 @@ class Emitter extends Object3D {
 		emitterObj.elasticity 			= 	getParamVal("elasticity");
 		// RANDOM COLOR
 		emitterObj.useRandomColor 		= 	getParamVal("useRandomColor");
+		emitterObj.useRandomGradient 	= 	getParamVal("useRandomGradient");
 		emitterObj.randomColor1 		= 	getParamVal("randomColor1");
 		emitterObj.randomColor2 		= 	getParamVal("randomColor2");
+		emitterObj.randomGradient 		= 	getParamVal("randomGradient");
+
 
 
 		#if !editor  // Keep startTime at 0 in Editor, since global.time is synchronized to timeline
@@ -1471,7 +1504,8 @@ class Emitter extends Object3D {
 				"alignMode",
 				"useCollision",
 				"emitType",
-				"useRandomColor"].indexOf(pname) >= 0)
+				"useRandomColor", 
+				"useRandomGradient"].indexOf(pname) >= 0)
 				refresh();
 		}
 
@@ -1502,8 +1536,18 @@ class Emitter extends Object3D {
 		}
 
 		if(!getParamVal("useRandomColor")) {
+			removeParam("useRandomGradient");
 			removeParam("randomColor1");
 			removeParam("randomColor2");
+			removeParam("randomGradient");
+		}
+		else {
+			if (getParamVal("useRandomGradient")){
+				removeParam("randomColor1");
+				removeParam("randomColor2");	
+			} else {
+				removeParam("randomGradient");
+			}
 		}
 
 		var emitType : EmitType = getParamVal("emitType");

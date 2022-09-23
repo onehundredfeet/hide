@@ -431,7 +431,7 @@ class Cell extends Component {
 				'<span class="error">#MISSING</span>';
 			else {
 				var id = c.scope != null ? makeId(scope,c.scope,v) : v;
-				editor.isUniqueID(sheet,obj,id) ? v : '<span class="error">#DUP($v)</span>';
+				!sheet.duplicateIds.exists(id) ? v : '<span class="error">#DUP($v)</span>';
 			}
 		case TString if( c.kind == Script ):  // wrap content in div because td cannot have max-height
 			v == "" ? " " : '<div class="script">${colorizeScript(c,v, sheet.idCol == null ? null : Reflect.field(obj, sheet.idCol.name))}</div>';
@@ -814,7 +814,12 @@ class Cell extends Component {
 				e.stopPropagation();
 			});
 			i.keyup(function(_) try {
-				editor.base.parseValue(column.type, i.val());
+				var v = editor.base.parseValue(column.type, i.val());
+
+				if (column.type == TId && !isUniqueID((v:String), true)) {
+						throw v + " is not an unique id";
+				}
+
 				setErrorMessage(null);
 			} catch( e : Dynamic ) {
 				setErrorMessage(StringTools.htmlUnescape(""+e));
@@ -1026,9 +1031,8 @@ class Cell extends Component {
 			}
 		case TColor:
 			var modal = new Element("<div>").addClass("hide-modal").appendTo(element);
-			var color = new ColorPicker(element);
+			var color = new ColorPicker(false, element, element.find(".color"));
 			color.value = currentValue;
-			color.open();
 			color.onChange = function(drag) {
 				element.find(".color").css({backgroundColor : '#'+StringTools.hex(color.value,6) });
 			};
@@ -1189,6 +1193,12 @@ class Cell extends Component {
 		new Element("<div>").addClass("error").html(msg).appendTo(element);
 	}
 
+	public function isUniqueID(id : String, ignoreSelf:Bool = false) {
+		var scope = getScope();
+		var idWithScope : String = if (column.scope != null) makeId(scope, column.scope, id) else id;
+		return editor.isUniqueID(table.getRealSheet(), if(ignoreSelf) line.obj else {}, idWithScope);
+	}
+
 	function setRawValue( str : Dynamic ) {
 		var newValue : Dynamic;
 		if( Std.isOfType(str,String) ) {
@@ -1210,22 +1220,32 @@ class Cell extends Component {
 			var prevObj = value != null ? realSheet.index.get(isLocal ? parentID+":"+value : value) : null;
 			// have we already an obj mapped to the same id ?
 			var prevTarget = realSheet.index.get(isLocal ? parentID+":"+newValue : newValue);
-			editor.beginChanges();
-			if( prevObj == null || prevObj.obj == obj ) {
-				// remap
-				var m = new Map();
-				m.set(value, newValue);
-				if( isLocal ) {
-					var scope = getScope();
-					var parent = scope[scope.length - realSheet.idCol.scope];
-					editor.base.updateLocalRefs(realSheet, m, parent.obj, parent.s);
-				} else
-					editor.base.updateRefs(realSheet, m);
+			
+			if (isUniqueID(newValue, true))
+			{
+				editor.beginChanges();
+				if( prevObj == null || prevObj.obj == obj ) {
+					// remap
+					var m = new Map();
+					m.set(value, newValue);
+					if( isLocal ) {
+						var scope = getScope();
+						var parent = scope[scope.length - realSheet.idCol.scope];
+						editor.base.updateLocalRefs(realSheet, m, parent.obj, parent.s);
+					} else
+						editor.base.updateRefs(realSheet, m);
+				}
+				setValue(newValue);
+				editor.endChanges();
+				editor.refreshRefs();
+				focus();
+	
+				// Refresh display of all ids in the column manually
+				var colId = table.sheet.columns.indexOf(column);
+				for (l in table.lines) {
+					l.cells[colId].refresh(false);	
+				}
 			}
-			setValue(newValue);
-			editor.endChanges();
-			editor.refreshRefs();
-			focus();
 			/*
 			// creates or remove a #DUP : need to refresh the whole table
 			if( prevTarget != null || (prevObj != null && (prevObj.obj != obj || table.sheet.index.get(prevValue) != null)) )

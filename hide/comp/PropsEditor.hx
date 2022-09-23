@@ -1,4 +1,6 @@
 package hide.comp;
+import hide.comp.GradientEditor.GradientBox;
+import hrt.impl.TextureType.Utils;
 import hrt.prefab.Props;
 
 class PropsEditor extends Component {
@@ -68,8 +70,12 @@ class PropsEditor extends Component {
 			if( max != null ) e.attr("max", "" + max);
 		case PBool:
 			new Element('<input type="checkbox" field="${p.name}">').appendTo(parent);
-		case PTexture:
+		case PTexturePath:
 			new Element('<input type="texturepath" field="${p.name}">').appendTo(parent);
+		case PTexture:
+			new Element('<input type="texturechoice" field="${p.name}">').appendTo(parent);
+		case PGradient:
+			new Element('<input type="gradient" field="${p.name}">').appendTo(parent);
 		case PUnsupported(text):
 			new Element('<font color="red">' + StringTools.htmlEscape(text) + '</font>').appendTo(parent);
 		case PVec(n, min, max):
@@ -262,9 +268,13 @@ class PropsField extends Component {
 	var props : PropsEditor;
 	var context : Dynamic;
 	var current : Dynamic;
+	var currentSave : Dynamic;
+
 	var enumValue : Enum<Dynamic>;
 	var tempChange : Bool;
 	var beforeTempChange : { value : Dynamic };
+	var tchoice : hide.comp.TextureChoice;
+	var gradient : GradientBox;
 	var tselect : hide.comp.TextureSelect;
 	var fselect : hide.comp.FileSelect;
 	var viewRoot : Element;
@@ -325,6 +335,76 @@ class PropsField extends Component {
 				onChange(false);
 			}
 			return;
+		case "texturechoice":
+			tchoice = new TextureChoice(null, f);
+			tchoice.value = current;
+			currentSave = Utils.copyTextureData(current);
+
+			tchoice.onChange = function(shouldUndo : Bool) {
+
+				if (shouldUndo) {
+					var setVal = function(val, undo) {
+						var f = resolveField();
+						f.current = val;
+						f.currentSave = Utils.copyTextureData(val);
+						f.tchoice.value = val;
+						setFieldValue(val);
+						f.onChange(undo);
+					}
+
+					var oldVal = Utils.copyTextureData(currentSave);
+					var newVal = Utils.copyTextureData(tchoice.value);
+
+					props.undo.change(Custom(function(undo) {
+						if (undo) {
+							setVal(oldVal, true);
+						} else {
+							setVal(newVal, false);
+						}
+					}));
+
+					setVal(tchoice.value, false);
+				} else {
+					current = tchoice.value;
+					setFieldValue(current);
+					onChange(false);
+				}
+			}
+			return;
+		case "gradient":
+			gradient = new GradientBox(null, f);
+			gradient.value = current;
+			currentSave = Utils.copyTextureData(current);
+
+			gradient.onChange = function(shouldUndo : Bool) {
+				if (shouldUndo) {
+					var setVal = function(val, undo) {
+						var f = resolveField();
+						f.current = val;
+						f.currentSave = Utils.copyTextureData(val);
+						f.gradient.value = val;
+						setFieldValue(val);
+						f.onChange(undo);
+					}
+
+					var oldVal = Utils.copyTextureData(currentSave);
+					var newVal = Utils.copyTextureData(gradient.value);
+
+					props.undo.change(Custom(function(undo) {
+						if (undo) {
+							setVal(oldVal, true);
+						} else {
+							setVal(newVal, false);
+						}
+					}));
+
+					setVal(gradient.value, false);
+				} else {
+					current = gradient.value;
+					setFieldValue(current);
+					onChange(false);
+				}
+			}
 		case "model":
 			fselect = new hide.comp.FileSelect(["hmd", "fbx"], null, f);
 			fselect.path = current;
@@ -369,7 +449,7 @@ class PropsField extends Component {
 		case "color":
 			var arr = Std.downcast(current, Array);
 			var alpha = arr != null && arr.length == 4 || f.attr("alpha") == "true";
-			var picker = new hide.comp.ColorPicker(alpha, null, f);
+			var picker = new hide.comp.ColorPicker.ColorBox(null, f, true, alpha);
 
 			function updatePicker(val: Dynamic) {
 				if(arr != null) {
