@@ -17,7 +17,7 @@ import hrt.prefab.Object3D;
 import h3d.scene.Object;
 
 import hide.comp.cdb.DataFiles;
-import hide.view.CameraController.CamController as CameraController;
+import hide.view.CameraController;
 
 enum SelectMode {
 	/**
@@ -65,9 +65,9 @@ class SceneEditorContext extends hide.prefab.EditContext {
 				if(ctx != null) {
 					var pobj = elt.parent == editor.sceneData ? ctx.shared.root3d : getContextRec(elt.parent).local3d;
 					var pobj2d = elt.parent == editor.sceneData ? ctx.shared.root2d : getContextRec(elt.parent).local2d;
-					if( ctx.local3d != pobj )
+					if( ctx.local3d != pobj && ctx.local3d != null)
 						rootObjects.push(ctx.local3d);
-					if( ctx.local2d != pobj2d )
+					if( ctx.local2d != pobj2d && ctx.local2d != null)
 						rootObjects2D.push(ctx.local2d);
 				}
 			}
@@ -136,17 +136,20 @@ class SceneEditor {
 	public var curEdit(default, null) : SceneEditorContext;
 	public var snapToGround = false;
 	public var localTransform = true;
-	public var cameraController : h3d.scene.CameraController;
+	public var cameraController : CameraControllerBase;
 	public var cameraController2D : hide.view.l3d.CameraController2D;
 	public var editorDisplay(default,set) : Bool;
 	public var camera2D(default,set) : Bool = false;
 	public var objectAreSelectable = true;
+
 
 	var updates : Array<Float -> Void> = [];
 
 	var showGizmo = true;
 	var gizmo : hide.view.l3d.Gizmo;
 	var gizmo2d : hide.view.l3d.Gizmo2D;
+	var basis : h3d.scene.Object;
+	public var showBasis = false;
 	static var customPivot : CustomPivot;
 	var interactives : Map<PrefabElement, hxd.SceneEvents.Interactive>;
 	var ide : hide.Ide;
@@ -286,13 +289,14 @@ class SceneEditor {
 		return curEdit != null ? curEdit.elements : [];
 	}
 
-	function makeCamController() : h3d.scene.CameraController {
-		var c = new CameraController(scene.s3d, this);
-		c.friction = 0.9;
-		c.panSpeed = 0.6;
-		c.zoomAmount = 1.05;
-		c.smooth = 0.7;
-		c.minDistance = 1;
+	function makeCamController() : CameraControllerBase {
+		//var c = new CameraController(scene.s3d, this);
+		var c = new hide.view.CameraController.FlightController(scene.s3d, this);
+		// c.friction = 0.9;
+		// c.panSpeed = 0.6;
+		// c.zoomAmount = 1.05;
+		// c.smooth = 0.7;
+		// c.minDistance = 1;
 		return c;
 	}
 
@@ -302,6 +306,11 @@ class SceneEditor {
 			view.element.find(".tabs").hide();
 		} else {
 			view.element.find(".tabs").show();
+		}
+		var pview = Std.downcast(view, hide.view.Prefab);
+		if(pview != null) {
+			if(b) pview.hideColumns();
+			else pview.showColumns();
 		}
 	}
 
@@ -380,6 +389,97 @@ class SceneEditor {
 		return ret;
 	}
 
+	public function switchCamController(camClass : Class<CameraControllerBase>, force: Bool = false) {
+		if (cameraController != null) {
+			if (!force)
+				saveCam3D();
+			cameraController.remove();
+		}
+
+		cameraController = Type.createInstance(camClass, [scene.s3d, this]);
+		loadCam3D();
+	}
+
+	public function loadSavedCameraController3D(force: Bool = false) {
+		var wantedClass : Class<CameraControllerBase> = CamController;
+		var cam = @:privateAccess view.getDisplayState("Camera");
+		if (cam != null && cam.camTypeIndex != null) {
+			if (cam.camTypeIndex >=0 && cam.camTypeIndex < CameraControllerEditor.controllersClasses.length) {
+				wantedClass = CameraControllerEditor.controllersClasses[cam.camTypeIndex].cl;
+			}
+		}
+
+		switchCamController(wantedClass, force);
+	}
+
+	public function loadCam3D() {
+		cameraController.onClick = function(e) {
+			switch( e.button ) {
+			case K.MOUSE_RIGHT:
+				selectNewObject();
+			case K.MOUSE_LEFT:
+				selectElements([]);
+			}
+		};
+
+		if (!camera2D)
+			resetCamera();
+
+
+		var cam = @:privateAccess view.getDisplayState("Camera");
+		if( cam != null ) {
+			scene.s3d.camera.pos.set(cam.x, cam.y, cam.z);
+			scene.s3d.camera.target.set(cam.tx, cam.ty, cam.tz);
+
+			if (cam.ux == null) {
+				scene.s3d.camera.up.set(0,0,1);
+			}
+			else {
+				scene.s3d.camera.up.set(cam.ux,cam.uy,cam.uz);
+			}
+			cameraController.loadSettings(cam);
+		}
+		cameraController.loadFromCamera();
+	}
+
+	public function saveCam3D() {
+		var cam = scene.s3d.camera;
+		if (cam == null)
+			return;
+		var toSave : Dynamic = @:privateAccess view.getDisplayState("Camera");
+		if (toSave == null)
+			toSave = {};
+
+		toSave.x = cam.pos.x;
+		toSave.y = cam.pos.y;
+		toSave.z = cam.pos.z;
+		toSave.tx = cam.target.x;
+		toSave.ty = cam.target.y;
+		toSave.tz = cam.target.z;
+		toSave.ux = cam.up.x;
+		toSave.uy = cam.up.y;
+		toSave.uz = cam.up.z;
+
+		for (i in 0...CameraControllerEditor.controllersClasses.length) {
+			if (CameraControllerEditor.controllersClasses[i].cl == Type.getClass(cameraController)) {
+				toSave.camTypeIndex = i;
+				break;
+			}
+		}
+
+		cameraController.saveSettings(toSave);
+
+		/*var cc = Std.downcast(cameraController, hide.view.CameraController.CamController);
+		if (cc!=null) {
+			var toSave = { x : cam.pos.x, y : cam.pos.y, z : cam.pos.z, tx : cam.target.x, ty : cam.target.y, tz : cam.target.z,
+				isFps : cc.isFps,
+				isOrtho : cc.isOrtho,
+				camSpeed : cc.camSpeed,
+				fov : cc.wantedFOV,
+			};*/
+		@:privateAccess view.saveDisplayState("Camera", toSave);
+	}
+
 	function onSceneReady() {
 
 		tree.saveDisplayKey = view.saveDisplayKey + '/tree';
@@ -397,25 +497,46 @@ class SceneEditor {
 		gizmo2d = new hide.view.l3d.Gizmo2D();
 		scene.s2d.add(gizmo2d, 1); // over local3d
 
-		cameraController = makeCamController();
-		cameraController.onClick = function(e) {
-			switch( e.button ) {
-			case K.MOUSE_RIGHT:
-				selectNewObject();
-			case K.MOUSE_LEFT:
-				selectElements([]);
-			}
-		};
-		if (!camera2D)
-			resetCamera();
+		basis = new h3d.scene.Object(scene.s3d);
 
+		// Note : we create 2 different graphics because
+		// 1 graohic can only handle one line style, and
+		// we want the forward vector to be thicker so
+		// it's easier to recognise
+		{
+			var fwd = new h3d.scene.Graphics(basis);
+			fwd.is3D = false;
+			fwd.lineStyle(1.25, 0xFF0000);
+			fwd.lineTo(1.0,0.0,0.0);
 
-		var cam = @:privateAccess view.getDisplayState("Camera");
-		if( cam != null ) {
-			scene.s3d.camera.pos.set(cam.x, cam.y, cam.z);
-			scene.s3d.camera.target.set(cam.tx, cam.ty, cam.tz);
+			var mat = fwd.getMaterials()[0];
+			mat.mainPass.depth(false, Always);
+			mat.mainPass.setPassName("ui");
+			mat.mainPass.blend(SrcAlpha, OneMinusSrcAlpha);
 		}
-		cameraController.loadFromCamera();
+
+		{
+			var otheraxis = new h3d.scene.Graphics(basis);
+
+			otheraxis.lineStyle(.75, 0x00FF00);
+
+			otheraxis.moveTo(0.0,0.0,0.0);
+			otheraxis.setColor(0x00FF00);
+			otheraxis.lineTo(0.0,2.0,0.0);
+
+			otheraxis.moveTo(0.0,0.0,0.0);
+			otheraxis.setColor(0x0000FF);
+			otheraxis.lineTo(0.0,0.0,2.0);
+
+			var mat = otheraxis.getMaterials()[0];
+			mat.mainPass.depth(false, Always);
+			mat.mainPass.setPassName("ui");
+			mat.mainPass.blend(SrcAlpha, OneMinusSrcAlpha);
+		}
+
+		basis.visible = true;
+
+		loadSavedCameraController3D();
 
 		scene.s2d.defaultSmooth = true;
 		context.shared.root2d.x = scene.s2d.width >> 1;
@@ -1111,6 +1232,33 @@ class SceneEditor {
 		};
 	}
 
+	public function updateBasis() {
+		if (basis == null) return;
+		if (curEdit != null && curEdit.rootObjects.length == 1) {
+			basis.visible = showBasis;
+			var pos = getPivot(curEdit.rootObjects);
+			basis.setPosition(pos.x, pos.y, pos.z);
+			var obj = curEdit.rootObjects[0];
+			var mat = worldMat(obj);
+			var s = mat.getScale();
+
+			if(s.x != 0 && s.y != 0 && s.z != 0) {
+				mat.prependScale(1.0 / s.x, 1.0 / s.y, 1.0 / s.z);
+				basis.getRotationQuat().initRotateMatrix(mat);
+			}
+
+			var cam = scene.s3d.camera;
+			var gpos = gizmo.getAbsPos().getPosition();
+			var distToCam = cam.pos.sub(gpos).length();
+			var engine = h3d.Engine.getCurrent();
+			var ratio = 150 / engine.height;
+			basis.setScale(ratio * distToCam * Math.tan(cam.fovY * 0.5 * Math.PI / 180.0));
+
+		} else {
+			basis.visible = false;
+		}
+	}
+
 	function moveGizmoToSelection() {
 		// Snap Gizmo at center of objects
 		gizmo.getRotationQuat().identity();
@@ -1498,8 +1646,106 @@ class SceneEditor {
 		return props;
 	}
 
-	function fillProps( edit, e : PrefabElement ) {
+	function serializeProps(fields : Array<hide.comp.PropsEditor.PropsField>) : String {
+		var out = new Array<String>();
+		for (field in fields) {
+			@:privateAccess var accesses = field.getAccesses();
+			for (a in accesses) {
+				var v = Reflect.getProperty(a.obj, a.name);
+				var json = haxe.Json.stringify(v);
+				out.push('${a.name}:$json');
+			}
+		}
+		return haxe.Json.stringify(out);
+	}
+
+	// Return true if unseialization was successfull
+	function unserializeProps(fields : Array<hide.comp.PropsEditor.PropsField>, s : String) : Bool {
+		var data : Null<Array<Dynamic>> = null;
+		try {
+			data = cast(haxe.Json.parse(s), Array<Dynamic>);
+		}
+		catch(_) {
+
+		}
+		if (data != null) {
+			var map = new Map<String, Dynamic>();
+			for (field in data) {
+				var field : String = cast field;
+				var delimPos = field.indexOf(":");
+				var fieldName = field.substr(0, delimPos);
+				var fieldData = field.substr(delimPos+1);
+
+				var subdata : Dynamic = null;
+				try {
+					subdata = haxe.Json.parse(fieldData);
+				}
+				catch (_) {
+
+				}
+
+				if (subdata != null) {
+					map.set(fieldName, subdata);
+				}
+			}
+
+			for (field in fields) {
+				@:privateAccess var accesses = field.getAccesses();
+				for (a in accesses) {
+					if (map.exists(a.name)) {
+						Reflect.setProperty(a.obj, a.name, map.get(a.name));
+						field.onChange(false);
+					}
+				}
+			}
+
+			return true;
+		}
+		return false;
+	}
+
+	function pasteFields(edit : SceneEditorContext, fields : Array<hide.comp.PropsEditor.PropsField>) {
+		var pasteData = ide.getClipboard();
+		var currentData = serializeProps(fields);
+		var success = unserializeProps(fields, pasteData);
+		if (success) {
+			undo.change(Custom(function(undo) {
+				if (undo) {
+					unserializeProps(fields, currentData);
+					edit.onChange(edit.elements[0], "props");
+					edit.rebuildProperties();
+				} else {
+					unserializeProps(fields, pasteData);
+					edit.onChange(edit.elements[0], "props");
+					edit.rebuildProperties();
+				}
+			}));
+
+			edit.onChange(edit.elements[0], "props");
+			edit.rebuildProperties();
+		}
+	}
+
+
+	function copyFields(fields : Array<hide.comp.PropsEditor.PropsField>) {
+		ide.setClipboard(serializeProps(fields));
+	}
+
+	function fillProps( edit : SceneEditorContext, e : PrefabElement ) {
 		properties.element.append(new Element('<h1 class="prefab-name">${e.getHideProps().name}</h1>'));
+
+		var copyButton = new Element('<div class="hide-button" title="Copy all properties">').append(new Element('<div class="icon ico ico-copy">'));
+		copyButton.click(function(event : js.jquery.Event) {
+			copyFields(properties.fields);
+		});
+		properties.element.append(copyButton);
+
+		var pasteButton = new Element('<div class="hide-button" title="Paste values from the clipboard">').append(new Element('<div class="icon ico ico-paste">'));
+		pasteButton.click(function(event : js.jquery.Event) {
+			pasteFields(edit, properties.fields);
+		});
+		properties.element.append(pasteButton);
+
 		e.edit(edit);
 
 		var typeName = e.getCdbType();
@@ -1582,11 +1828,26 @@ class SceneEditor {
 		}
 	}
 
+	public function addGroupCopyPaste(edit : SceneEditorContext) {
+		for (groupName => groupFields in properties.groups) {
+			var header = properties.element.find('.group[name="$groupName"]').find(".title");
+			header.contextmenu( function(e) {
+				e.preventDefault();
+				new ContextMenu([{label: "Copy", click: function() {
+					copyFields(groupFields);
+				}},{label: "Paste", click: function() {
+					pasteFields(edit, groupFields);
+				}}]);
+			});
+		}
+	}
+
 	public function showProps(e: PrefabElement) {
 		scene.setCurrent();
 		var edit = makeEditContext([e]);
 		properties.clear();
 		fillProps(edit, e);
+		addGroupCopyPaste(edit);
 	}
 
 	function setElementSelected( p : PrefabElement, ctx : hrt.prefab.Context, b : Bool ) {
@@ -1636,7 +1897,10 @@ class SceneEditor {
 				customPivot = null;
 			}
 			properties.clear();
-			if( elts.length > 0 ) fillProps(edit, elts[0]);
+			if( elts.length > 0 ) {
+				fillProps(edit, elts[0]);
+				addGroupCopyPaste(edit);
+			}
 
 			switch( mode ) {
 			case Default, NoHistory:
@@ -1759,9 +2023,9 @@ class SceneEditor {
 
 		var supported = @:privateAccess hrt.prefab.Library.registeredExtensions;
 		var paths = [];
-		for(path in items) {
+			for(path in items) {
 			var ext = haxe.io.Path.extension(path).toLowerCase();
-			if( supported.exists(ext) || ext == "fbx" || ext == "hmd" )
+			if( supported.exists(ext) || ext == "fbx" || ext == "hmd" || ext == "json")
 				paths.push(path);
 		}
 		if( paths.length == 0 )
@@ -1779,6 +2043,11 @@ class SceneEditor {
 			var ref = new hrt.prefab.Reference(parent);
 			ref.source = relative;
 			obj3d = ref;
+			obj3d.name = new haxe.io.Path(relative).file;
+		}
+		else if(haxe.io.Path.extension(path).toLowerCase() == "json") {
+			obj3d = new hrt.prefab.l3d.Particles3D(parent);
+			obj3d.source = relative;
 			obj3d.name = new haxe.io.Path(relative).file;
 		}
 		else {
@@ -2441,15 +2710,16 @@ class SceneEditor {
 	}
 
 	function update(dt:Float) {
-		var cam = scene.s3d.camera;
-		@:privateAccess view.saveDisplayState("Camera", { x : cam.pos.x, y : cam.pos.y, z : cam.pos.z, tx : cam.target.x, ty : cam.target.y, tz : cam.target.z });
+		saveCam3D();
+
 		@:privateAccess view.saveDisplayState("Camera2D", { x : context.shared.root2d.x - scene.s2d.width*0.5, y : context.shared.root2d.y - scene.s2d.height*0.5, z : context.shared.root2d.scaleX });
 		if(gizmo != null) {
 			if(!gizmo.moving) {
 				moveGizmoToSelection();
 			}
-			gizmo.update(dt);
+			gizmo.update(dt, localTransform);
 		}
+		updateBasis();
 		event.update(dt);
 		for( f in updates )
 			f(dt);
@@ -2510,11 +2780,15 @@ class SceneEditor {
 		}
 		for( ptype in allRegs.keys() ) {
 			var pinf = allRegs.get(ptype);
+			if (ptype == "UiDisplay")
+				trace("break");
+
 			if (!checkAllowParent({cl : ptype, inf : pinf.inf}, parent)) continue;
 			if(ptype == "shader") {
 				newItems.push(getNewShaderMenu(parent, onMake));
 				continue;
 			}
+
 			var m = getNewTypeMenuItem(ptype, parent, onMake);
 			if( !groupByType )
 				newItems.push(m);
@@ -2561,6 +2835,8 @@ class SceneEditor {
 			label : label != null ? label : pmodel.inf.name,
 			click : function() {
 				function make(?sourcePath) {
+					if (ptype == "UiDisplay")
+						trace("Break");
 					var p = Type.createInstance(pmodel.cl, [parent]);
 					@:privateAccess p.type = ptype;
 					if(sourcePath != null)
@@ -2598,6 +2874,16 @@ class SceneEditor {
 			icon : pmodel.inf.icon,
 		};
 	}
+
+	static var globalShaders : Array<Class<hxsl.Shader>> = [
+		hrt.shader.DissolveBurn,
+		hrt.shader.Bloom,
+		hrt.shader.UVDebug,
+		hrt.shader.GradientMap,
+		hrt.shader.ParticleFade,
+		hrt.shader.ParticleColorLife,
+		hrt.shader.ParticleColorRandom,
+	];
 
 	function getNewShaderMenu(parentElt: PrefabElement, ?onMake: PrefabElement->Void) : hide.comp.ContextMenu.ContextMenuItem {
 		function isClassShader(path: String) {
@@ -2641,6 +2927,13 @@ class SceneEditor {
 		var menu : Array<hide.comp.ContextMenu.ContextMenuItem> = [];
 
 		var shaders : Array<String> = hide.Ide.inst.currentConfig.get("fx.shaders", []);
+		for (sh in globalShaders) {
+			var name = Type.getClassName(sh);
+			if (!shaders.contains(name)) {
+				shaders.push(name);
+			}
+		}
+
 		for(path in shaders) {
 			var strippedSlash = StringTools.endsWith(path, "/") ? path.substr(0, -1) : path;
 			var fullPath = ide.getPath(strippedSlash);
@@ -2649,20 +2942,17 @@ class SceneEditor {
 			} else if( StringTools.endsWith(path, ".shgraph")) {
 				menu.push(graphShaderItem(path));
 			} else if( sys.FileSystem.exists(fullPath) && sys.FileSystem.isDirectory(fullPath) ) {
-				var submenu : Array<hide.comp.ContextMenu.ContextMenuItem> = [];
 				for( c in sys.FileSystem.readDirectory(fullPath) ) {
 					var relPath = ide.makeRelative(fullPath + "/" + c);
 					if( isClassShader(relPath) ) {
-						submenu.push(classShaderItem(relPath));
+						menu.push(classShaderItem(relPath));
 					} else if( StringTools.endsWith(relPath, ".shgraph")) {
-						submenu.push(graphShaderItem(relPath));
+						menu.push(graphShaderItem(relPath));
 					}
-				}
-				if( submenu.length > 0 ) {
-					menu.push({ label : path, menu : submenu });
 				}
 			}
 		}
+
 
 		menu.sort(function(l1,l2) return Reflect.compare(l1.label,l2.label));
 		menu.unshift(custom);

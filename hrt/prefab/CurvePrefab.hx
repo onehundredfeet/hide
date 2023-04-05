@@ -291,6 +291,12 @@ typedef CurveKeys = Array<CurveKey>;
 		return key;
 	}
 
+			if (k.nextHandle != null) {
+				ret.addPos(k.time + k.nextHandle.dt, k.value + k.nextHandle.dv);
+			}
+			if (k.prevHandle != null) {
+				ret.addPos(k.time + k.prevHandle.dt, k.value + k.prevHandle.dv);
+			}
 
 
 	public function getVal(time: Float) : Float {

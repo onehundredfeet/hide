@@ -1,5 +1,6 @@
 package hide.comp;
 
+import hrt.impl.ColorSpace;
 import h2d.Slider;
 import js.html.InputElement;
 import js.jquery.Event;
@@ -7,20 +8,6 @@ import nw.Clipboard;
 import js.html.PointerEvent;
 import h3d.Vector;
 import js.Browser;
-
-class Color {
-	public var r : Int = 0;
-	public var g : Int = 0;
-	public var b : Int = 0;
-	public var a : Int = 0;
-
-	public function new(r:Int = 0, g:Int = 0, b:Int = 0, a:Int = 0) {
-		this.r = r;
-		this.g = g;
-		this.b = b;
-		this.a = a;
-	}
-}
 
 // Displays a color with its alpha component. Can open a color picker on click
 class ColorBox extends Component {
@@ -113,7 +100,6 @@ class ColorBox extends Component {
 	}
 }
 
-typedef ColorMode = {name: String, valueToARGB : (value : Vector,  outColor : Color) -> Void, ARGBToValue : (color : Color) -> Vector};
 typedef ColorSliderComponent = {label:Element};
 
 
@@ -139,128 +125,8 @@ class ColorPicker extends Popup {
 
 	var valueChangeGuard : Int = 0;
 
-	public var valueToARGB : (value : Vector,  outColor : Color) -> Void;
-	public var ARGBToValue : (color : Color) -> Vector;
-
-	static function iRGBtofRGB(color : Color) : Vector {
-		return new Vector(color.r/255.0, color.g/255.0, color.b/255.0, color.a/255.0);
-	}
-
-	static function fRGBtoiRGB(color : Vector, outColor : Color) {
-		outColor.r = Std.int(color.r*255.0);
-		outColor.g = Std.int(color.g*255.0); 
-		outColor.b = Std.int(color.b*255.0);
-		outColor.a = Std.int(color.a*255.0);
-	}
-
-	static function iRGBtoHSV(color: Color) : Vector {
-		var r = color.r / 255.0;
-		var g = color.g / 255.0;
-		var b = color.b / 255.0;
-		var a = color.a / 255.0;
-
-		var Cmax = Math.max(r, Math.max(g, b));
-		var Cmin = Math.min(r, Math.min(g, b));
-		var D = Cmax - Cmin;
-
-		var H = if(D == 0) 0.0
-				else if(Cmax == r) hxd.Math.ufmod((g - b)/D, 6) * 60.0
-				else if (Cmax == g) ((b - r)/D + 2) * 60.0
-				else ((r - g)/D + 4) * 60.0;
-		
-		H = H / 360.0;
-		H = Math.min(Math.max(H, 0.0), 1.0);
-		
-		var S = if (Cmax == 0) 0 else D/Cmax;
-
-		var V = Cmax;
-
-		var A = a;
-
-		return new Vector(H, S, V, A);
-	}
-
-	static function HSVtoiRGB(hsv:Vector, outColor : Color) {
-		var h = hsv.x * 360.0;
-		var s = hsv.y;
-		var v = hsv.z;
-
-		var C = v * s;
-		var X = C * (1 - Math.abs(hxd.Math.ufmod((h / 60.0),2) - 1));
-		var m = v - C;
-
-		var r = 0.0;
-		var g = 0.0;
-		var b = 0.0;
-
-		if (h < 60) {r = C; g = X;} 
-		else if (h < 120) {r = X; g = C;} 
-		else if (h < 180) {g = C; b = X;} 
-		else if (h < 240) {g = X; b = C;} 
-		else if (h < 300) {r = X; b = C;} 
-		else {r = C; b = X;};
-
-		outColor.r = Std.int(Math.round((r+m)*255));
-		outColor.g = Std.int(Math.round((g+m)*255));
-		outColor.b = Std.int(Math.round((b+m)*255));
-		outColor.a = Std.int(hsv.w * 255);
-	}
-
-	static function iRGBtoHSL(color : Color) : Vector {
-		var r = color.r / 255.0;
-		var g = color.g / 255.0;
-		var b = color.b / 255.0;
-		var a = color.a / 255.0;
-
-		var Cmax = Math.max(r, Math.max(g, b));
-		var Cmin = Math.min(r, Math.min(g, b));
-		var D = Cmax - Cmin;
-
-		var H = if(D == 0) 0.0
-				else if(Cmax == r) hxd.Math.ufmod((g - b)/D, 6) * 60.0
-				else if (Cmax == g) ((b - r)/D + 2) * 60.0
-				else ((r - g)/D + 4) * 60.0;
-		
-		H = H / 360.0;
-		H = Math.min(Math.max(H, 0.0), 1.0);
-
-		var L = (Cmax + Cmin) / 2;
-		var S = if (D == 0) 0 else D / (1 - Math.abs(2 * L - 1));
-
-		return new Vector(H, S, L, a);
-	}
-
-	static function HSLtoiRGB(hsl : Vector, outColor : Color) {
-		var h = hsl.x * 360.0;
-		var s = hsl.y;
-		var l = hsl.z;
-
-		var C = (1 - Math.abs(2*l-1)) * s;
-		var X = C * (1 - Math.abs(hxd.Math.ufmod((h / 60.0),2) - 1));
-		var m = l - C/2.0;
-
-		var r = 0.0;
-		var g = 0.0;
-		var b = 0.0;
-
-		if (h < 60) {r = C; g = X;} 
-		else if (h < 120) {r = X; g = C;} 
-		else if (h < 180) {g = C; b = X;} 
-		else if (h < 240) {g = X; b = C;} 
-		else if (h < 300) {r = X; b = C;} 
-		else {r = C; b = X;};
-
-		outColor.r = Std.int(Math.round((r+m)*255));
-		outColor.g = Std.int(Math.round((g+m)*255));
-		outColor.b = Std.int(Math.round((b+m)*255));
-		outColor.a = Std.int(hsl.w * 255);
-	}
-
-	var colorModes : Array<ColorMode> = [
-		{name:"RGB", valueToARGB: fRGBtoiRGB, ARGBToValue: iRGBtofRGB},
-		{name:"HSV", valueToARGB: HSVtoiRGB, ARGBToValue: iRGBtoHSV},
-		{name:"HSL", valueToARGB: HSLtoiRGB, ARGBToValue: iRGBtoHSL},
-	];
+	public var valueToARGB : (value : Vector,  outColor : Color) -> Color;
+	public var ARGBToValue : (color : Color, outVector: Vector) -> Vector;
 
 	public function repaint() {
 
@@ -286,9 +152,9 @@ class ColorPicker extends Popup {
 			colorCol.r = (i >> 16) & 0xFF;
 			colorCol.g = (i >> 8) & 0xFF;
 			colorCol.b = (i >> 0) & 0xFF;
-			var colorVec = iRGBtoHSV(colorCol);
+			var colorVec = ColorSpace.iRGBtoHSV(colorCol);
 
-			HSVtoiRGB(colorVec, colorCol2);
+			ColorSpace.HSVtoiRGB(colorVec, colorCol2);
 
 			if (colorCol.r != colorCol2.r ||
 				colorCol.g != colorCol2.g ||
@@ -308,8 +174,8 @@ class ColorPicker extends Popup {
 
 		popup.addClass("color-picker");
 
-		valueToARGB = HSVtoiRGB;
-		ARGBToValue = iRGBtoHSV;
+		valueToARGB = ColorSpace.HSVtoiRGB;
+		ARGBToValue = ColorSpace.iRGBtoHSV;
 
 		initSliders();
 
@@ -360,30 +226,31 @@ class ColorPicker extends Popup {
 		}
 		inputRow.append(colorCode);
 
-		inputRow.addClass("toolbar hide-toolbar");
+		inputRow.addClass("hide-toolbar2");
 		inputRow.css({'margin-bottom': 'auto'});
 
-		copyButton = new Element("<div class='button' title='Copy'>");
+		var group = new Element("<div class='tb-group'>").appendTo(inputRow);
+		copyButton = new Element("<div class='button2' title='Copy'>");
 		copyButton.append(new Element("<div class='icon ico ico-copy'>"));
 		copyButton.on("click", function(e) {
 			Clipboard.get().set(colorCode.val());
 		});
-		inputRow.append(copyButton);
+		group.append(copyButton);
 
 
-		pasteButton = new Element("<div class='button' title='Paste'>");
+		pasteButton = new Element("<div class='button2' title='Paste'>");
 		pasteButton.append(new Element("<div class='icon ico ico-paste'>"));
 		pasteButton.on("click", function(e) {
 			var value = Clipboard.get().get();
 			colorCode.val(value).change();
 		});
-		inputRow.append(pasteButton);
+		group.append(pasteButton);
 
 	}
 
 	function initSliders() {
 		{
-			primarySliders = new SliderGroup(popup, canEditAlpha, colorModes[1]);
+			primarySliders = new SliderGroup(popup, canEditAlpha, ColorSpace.colorModes[1]);
 			
 			primarySliders.onChange = function(isDragging : Bool) {
 				workValue = primarySliders.value;
@@ -397,17 +264,17 @@ class ColorPicker extends Popup {
 				function(x : Int, y : Int, outVector : Vector) {
 					outVector.x = primarySliders.workValue.x;
 					outVector.y = x / 255.0;
-					outVector.z = y / 255.0;
+					outVector.z = 1.0-(y / 255.0);
 					outVector.w = 1.0;
 				},
 				function(x : Int, y : Int, outVector : Vector) {
 					outVector.x = primarySliders.workValue.x;
 					outVector.y = x / 255.0;
-					outVector.z = y / 255.0;
+					outVector.z = 1.0-(y / 255.0);
 					outVector.w = primarySliders.workValue.w;
 				}, 
 				function() : {x:Int, y:Int} {
-					return {x: Std.int(primarySliders.workValue.y * 255.0), y: Std.int(primarySliders.workValue.z * 255.0)};
+					return {x: Std.int(primarySliders.workValue.y * 255.0), y: Std.int((1.0-primarySliders.workValue.z) * 255.0)};
 				}));
 			
 	
@@ -457,7 +324,7 @@ class ColorPicker extends Popup {
 		new Element("<hr>").appendTo(popup);
 
 		{
-			secondarySliders = new SliderGroup(popup, canEditAlpha, colorModes[0]);
+			secondarySliders = new SliderGroup(popup, canEditAlpha, ColorSpace.colorModes[0]);
 
 			secondarySliders.onChange = function(isDragging : Bool) {
 				workValue = secondarySliders.value;
@@ -548,7 +415,7 @@ class ColorPicker extends Popup {
 
 			var initialMode : Int = ide.currentConfig.get("colorPicker.secondaryColorMode", 0);
 			var modeSelect = new Element("<select id=secondary-color-mode>").css("align-self", "end").appendTo(vbox);
-			for (i => mode in colorModes) {
+			for (i => mode in ColorSpace.colorModes) {
 				var option = new Element("<option>").val(i).text(mode.name).appendTo(modeSelect);
 				if (i == initialMode)
 					option.attr("selected", "true");
@@ -557,13 +424,13 @@ class ColorPicker extends Popup {
 			modeSelect.change(
 				function(e : Event) {
 					var val = Std.parseInt(modeSelect.val());
-					var modeIndex : Int = Std.int(hxd.Math.clamp(val, 0, colorModes.length));
+					var modeIndex : Int = Std.int(hxd.Math.clamp(val, 0, ColorSpace.colorModes.length));
 					ide.currentConfig.set("colorPicker.secondaryColorMode", modeIndex);
-					changeColorMode(colorModes[modeIndex]);
+					changeColorMode(ColorSpace.colorModes[modeIndex]);
 				}
 			);
 
-			changeColorMode(colorModes[initialMode]);
+			changeColorMode(ColorSpace.colorModes[initialMode]);
 		}
 	}
 
@@ -815,7 +682,7 @@ class SliderGroup extends Component {
 				(v >> 24) & 0xFF
 			);
 
-			workValue = colorMode.ARGBToValue(color);
+			workValue = colorMode.ARGBToValue(color, null);
 		}
 
 		repaint();

@@ -67,6 +67,33 @@ class GradientBox extends Component {
                 gradientEditor = null;
             }
         });
+
+        function contextMenu(e : js.jquery.Event) {
+            e.preventDefault();
+            new ContextMenu([
+                {label: "Reset", click: function() {
+                    value = Gradient.getDefaultGradientData();
+                    onChange(false);
+                }},
+                {label:"sep", isSeparator: true},
+                {label: "Copy", click: function() {
+                    ide.setClipboard(haxe.Json.stringify(value));
+                }},
+                {
+                    label: "Paste", click: function() {
+                        try {
+                            var data = haxe.Json.parse(ide.getClipboard());
+                            value = data;
+                            onChange(false);
+                        } catch(_) {
+
+                        }
+                    }
+                }
+            ]);
+        }
+
+        element.contextmenu(contextMenu);
     }
 }
 
@@ -87,6 +114,10 @@ class GradientEditor extends Popup {
     var stopLabel : Element;
 
     var resolutionInput : Element;
+    var isVerticalCheckbox : Element;
+    var interpolation : Element;
+    var colorMode : Element;
+
 
     var keys : hide.ui.Keys;
 
@@ -198,12 +229,15 @@ class GradientEditor extends Popup {
         }
 
         var detailsSection = new Element("<details>").appendTo(editor);
-        new Element("<summary>").text("Settings").appendTo(detailsSection);
+        new Element("<summary>").text("Generated texture settings").appendTo(detailsSection);
 
-        new Element("<label for='resolution'>").text("Texture Width").appendTo(detailsSection);
+        var detailsDiv = new Element("<div>").css("padding", "4px").appendTo(detailsSection);
 
-        resolutionInput = new Element("<select id='resolution' name='resolution'>").appendTo(detailsSection);
+        resolutionInput = new Element("<select id='resolution' name='resolution'>");
 
+        new Element("<div>").appendTo(detailsDiv)
+            .append( new Element("<label for='resolution'>").text("Resolution"))
+            .append(resolutionInput);
         for (i in 1...12) {
             var val = Math.pow(2, i);
             new Element('<option value="$val">').text('$val px').appendTo(resolutionInput);
@@ -215,6 +249,58 @@ class GradientEditor extends Popup {
             onChange(false);
         });
 
+
+        isVerticalCheckbox = new Element("<select id='isVertical'>");
+        
+        new Element('<option value="0">').text('Horizontal').appendTo(isVerticalCheckbox);
+        new Element('<option value="1">').text('Vertical').appendTo(isVerticalCheckbox);
+
+        isVerticalCheckbox.on("change", function(e : js.jquery.Event) {
+            var val : Bool = isVerticalCheckbox.val() == 1 ? true : false;
+            innerValue.isVertical = val;
+            trace(val);
+            onChange(false);
+        });
+
+        new Element("<div>").appendTo(detailsDiv)
+            .append(new Element("<label for='isVertical'>").text("Orientation").attr("title", "Change the orientation of the generated texture. This don't have any effect on gradients that are used only on the cpu"))
+            .append(isVerticalCheckbox);
+
+
+        interpolation = new Element("<select id='interpolation'>");
+        new Element('<option value="Linear">').text('Linear').appendTo(interpolation);
+        new Element('<option value="Constant">').text('Constant').appendTo(interpolation);
+        new Element('<option value="Cubic">').text('Cubic').appendTo(interpolation);
+
+
+        interpolation.on("change", function(e : js.jquery.Event) {
+            var val : String = interpolation.val();
+            innerValue.interpolation = val;
+            trace(val);
+            onChange(false);
+        });
+
+        new Element("<div>").appendTo(detailsDiv)
+        .append(new Element("<label for='interpolation'>").text("Interpolation").attr("title", "Change how the colors stops in the gradient are interpolated between them."))
+        .append(interpolation);
+
+        colorMode = new Element("<select id='colorMode'>");
+        var idx = 0;
+        for (mode in hrt.impl.ColorSpace.colorModes) {
+            new Element('<option value="$idx">').text(mode.name).appendTo(colorMode);
+            idx ++;
+        }
+
+        colorMode.on("change", function(e : js.jquery.Event) {
+            var val : Int = Std.parseInt(colorMode.val());
+            innerValue.colorMode = val;
+            trace(val);
+            onChange(false);
+        });
+
+        new Element("<div>").appendTo(detailsDiv)
+        .append(new Element("<label for='colorMode'>").text("Color Space").attr("title", "Change the color space to use when interpolating the stops of the gradient."))
+        .append(colorMode);
 
         reflow();
         fixInputSelect();
@@ -315,12 +401,15 @@ class GradientEditor extends Popup {
             colorbox.isPickerEnabled = true;
         } else {
             stopEditor.addClass("disabled");
-            stopLabel.text('Stop'); 
+            stopLabel.text('Stop');
             colorbox.value = 0x77777777;
             colorbox.isPickerEnabled = false;
         }
 
         resolutionInput.val('${innerValue.resolution}');
+        isVerticalCheckbox.val('${innerValue.isVertical ? 1 : 0}');
+        interpolation.val(innerValue.interpolation);
+        colorMode.val('${innerValue.colorMode}');
     }
 
     function removeStop(element : Element) {

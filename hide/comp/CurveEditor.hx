@@ -24,7 +24,11 @@ class CurveEditor extends Component {
 	public var minValue:Float = 0.;
 	public var maxValue:Float = 0.;
 
-	var svg:hide.comp.SVG;
+	public dynamic function requestXZoom(xmin: Float, xmax: Float) {
+
+	}
+
+	var svg : hide.comp.SVG;
 	var width = 0;
 	var height = 0;
 	var gridGroup:Element;
@@ -103,7 +107,7 @@ class CurveEditor extends Component {
 			}
 		});
 		element.keydown(function(e) {
-			if (e.key == "z") {
+			if(e.key == "z" || e.key == "f") {
 				zoomAll();
 				refresh();
 			}
@@ -144,9 +148,9 @@ class CurveEditor extends Component {
 				e.stopPropagation();
 				afterChange();
 			}
-			if (e.key == "z") {
+			/*if(e.key == "z") {
 				zoomAll();
-			}
+			}*/
 		});
 	}
 
@@ -413,6 +417,9 @@ class CurveEditor extends Component {
 		}
 		if (!lockViewX) {
 			setXZoom(bounds.xMin, bounds.xMax);
+		}
+		else {
+			requestXZoom(bounds.xMin, bounds.xMax);
 		}
 		saveView();
 	}

@@ -47,6 +47,7 @@ class ShaderAnimation extends Evaluator {
 
 class ShaderDynAnimation extends ShaderAnimation {
 
+	static var tmpVec = new h3d.Vector();
 	override function setTime(time: Float) {
 		var shader : hxsl.DynamicShader = cast shader;
 		for(param in params) {
@@ -62,8 +63,8 @@ class ShaderDynAnimation extends ShaderAnimation {
 					var val = getFloat(param.value, time) >= 0.5;
 					shader.setParamValue(v, val);
 				case TVec(_, VFloat):
-					var val = getVector(param.value, time);
-					shader.setParamValue(v, val);
+					getVector(param.value, time, tmpVec);
+					shader.setParamValue(v, tmpVec);
 				default:
 			}
 		}
@@ -116,7 +117,7 @@ class BaseFX extends hrt.prefab.Library {
 		if(shaderDef == null)
 			return null;
 
-		var ret : ShaderParams = [];
+		var ret : ShaderParams = null;
 
 		var paramCount = 0;
 		for(v in shaderDef.data.vars) {
@@ -137,6 +138,7 @@ class BaseFX extends hrt.prefab.Library {
 				case TVec(_, VFloat) :
 					var isColor = v.name.toLowerCase().indexOf("color") >= 0;
 					var val = isColor ? CurvePrefab.getColorValue(curves) : CurvePrefab.getVectorValue(curves);
+					if(ret == null) ret = [];
 					ret.push({
 						idx: paramCount - 1,
 						def: v,
@@ -154,6 +156,7 @@ class BaseFX extends hrt.prefab.Library {
 							val = Value.VCurveScale(curve.curve, base);
 						else
 							val = Value.VCurve(curve.curve);
+					if(ret == null) ret = [];
 					ret.push({
 						idx: paramCount - 1,
 						def: v,
@@ -178,9 +181,11 @@ class BaseFX extends hrt.prefab.Library {
 
 		for(shCtx in ctx.shared.getContexts(elt)) {
 			if(shCtx.custom == null) continue;
-			var anim = Std.isOfType(shCtx.custom,hxsl.DynamicShader) ? new ShaderDynAnimation(new hxd.Rand(0)) : new ShaderAnimation(new hxd.Rand(0));
+			var params = makeShaderParams(ctx, shader);
+			if(params == null) continue;
+			var anim = Std.isOfType(shCtx.custom,hxsl.DynamicShader) ? new ShaderDynAnimation() : new ShaderAnimation();
 			anim.shader = shCtx.custom;
-			anim.params = makeShaderParams(ctx, shader);
+			anim.params = params;
 			anims.push(anim);
 		}
 	}

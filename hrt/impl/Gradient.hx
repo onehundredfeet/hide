@@ -6,27 +6,40 @@ import h3d.Vector;
 
 typedef ColorStop = {position : Float, color : Int};
 
+@:enum
+abstract GradientInterpolation(String) from String to String {
+    var Linear;
+    var Cubic;
+    var Constant;
+}
+
 typedef GradientData = {
     var stops : Array<ColorStop>;
     var resolution : Int;
+    var isVertical : Bool;
+    var interpolation: GradientInterpolation;
+    var colorMode: Int;
 };
 
 class Gradient {
     public var data : GradientData = {
         stops: new Array<ColorStop>(),
-        resolution: 32
+        resolution: 32,
+        isVertical: false,
+        interpolation: Linear,
+        colorMode: 0,
     };
 
     public function new () {
     }
 
     public static function getDefaultGradientData() : GradientData {
-        var data : GradientData = {stops: [{position: 0.0, color:0xFF000000}, {position: 1.0, color:0xFFFFFFFF}], resolution: 64};
+        var data : GradientData = {stops: [{position: 0.0, color:0xFF000000}, {position: 1.0, color:0xFFFFFFFF}], resolution: 64, isVertical : false, interpolation: Linear, colorMode: 0};
         return data;
     }
 
     public static function evalData(data : GradientData, position : Float, ?outVector : Vector) : Vector {
-        if (outVector == null) outVector = new Vector(); 
+        if (outVector == null) outVector = new Vector();
         var i : Int = 0;
         while(i < data.stops.length && data.stops[i].position < position) {
             i += 1;
@@ -46,11 +59,60 @@ class Gradient {
 
         var blend = if (distance != 0.0) 1.0 - (offsetFromSecondStop / distance) else 0.0;
         blend = hxd.Math.clamp(blend, 0.0, 1.0);
-        var start = Vector.fromColor(c1);
-        var end = Vector.fromColor(c2);
 
-        outVector.lerp(start, end, blend);
-        
+        var func = ColorSpace.colorModes[data.colorMode];
+
+        var start = func.ARGBToValue(ColorSpace.Color.fromInt(c1), null);
+        var end = func.ARGBToValue(ColorSpace.Color.fromInt(c2), null);
+
+        inline function lerp_angle(a:Float,b:Float,t:Float) : Float {
+            var diff = (b - a) % 1.0;
+            var dist = ((2.0 * diff) % 1.0) - diff;
+            return outVector.x = (a + dist * t + 1.0) % 1.0;
+        }
+
+        switch (data.interpolation) {
+            case Linear:
+                outVector.lerp(start, end, blend);
+
+                // Patch hue values that need to be lerped around the cercle
+                if (func.name.charAt(0) == "H") {
+                    outVector.x = lerp_angle(start.x, end.x, blend);
+                }
+            case Constant:
+                outVector.load(start);
+            case Cubic:
+                // Honteusement copié de https://github.com/godotengine/godot/blob/c241f1c52386b21cf2df936ee927740a06970db6/scene/resources/gradient.h#L159
+                var i0 = firstStopIdx-1;
+                var i3 = secondStopIdx+1;
+                if (i0 < 0) {
+                    i0 = firstStopIdx;
+                }
+                if (i3 >= data.stops.length) {
+                    i3 = data.stops.length-1;
+                }
+                var c0 = func.ARGBToValue(ColorSpace.Color.fromInt(data.stops[i0].color), null);
+                var c3 = func.ARGBToValue(ColorSpace.Color.fromInt(data.stops[i3].color), null);
+
+                inline function cubicInterpolate(p_from: Float, p_to: Float, p_pre: Float, p_post: Float, p_weight: Float) {
+                    return 0.5 *
+                            ((p_from * 2.0) +
+                                    (-p_pre + p_to) * p_weight +
+                                    (2.0 * p_pre - 5.0 * p_from + 4.0 * p_to - p_post) * (p_weight * p_weight) +
+                                    (-p_pre + 3.0 * p_from - 3.0 * p_to + p_post) * (p_weight * p_weight * p_weight));
+                }
+
+                outVector.r = cubicInterpolate(start.r, end.r, c0.r, c3.r, blend);
+                outVector.g = cubicInterpolate(start.g, end.g, c0.g, c3.g, blend);
+                outVector.b = cubicInterpolate(start.b, end.b, c0.b, c3.b, blend);
+                outVector.a = cubicInterpolate(start.a, end.a, c0.a, c3.a, blend);
+            default:
+                throw "Unknown interpolation mode";
+        }
+
+        var tmp = func.valueToARGB(outVector, null);
+        ColorSpace.iRGBtofRGB(tmp, outVector);
+
         return outVector;
     }
 
@@ -74,6 +136,14 @@ class Gradient {
 
     public static function getDataHash(data : GradientData) : Int32 {
         var hash = hashCombine(0, data.resolution);
+        hash = hashCombine(hash, data.isVertical ? 0 : 1);
+
+        // Vieux hack nul
+        hash = hashCombine(hash, (data.interpolation:String).charCodeAt(0));
+        hash = hashCombine(hash, (data.interpolation:String).charCodeAt(1));
+
+        hash = hashCombine(hash, data.colorMode);
+
         for (stop in data.stops) {
             hash = hashCombine(hash, stop.color);
             hash = hashCombine(hash, Std.int(stop.position * 214748357));
@@ -102,12 +172,14 @@ class Gradient {
             // and use this copy in the genPixels function. But at this moment we consider that it's a bug
             if(newHash != oldHash) throw "gradient data has changed between first generation and realloc";
             #end
-            var pixels = hxd.Pixels.alloc(data.resolution,1, ARGB);
+            var xScale = data.isVertical ? 0 : 1;
+            var yScale = 1 - xScale;
+            var pixels = hxd.Pixels.alloc(data.resolution * xScale + 1 * yScale,1 * xScale + data.resolution * yScale, ARGB);
 
             var vec = new Vector();
             for (x in 0...data.resolution) {
                 evalData(data, x / data.resolution, vec);
-                pixels.setPixelF(x,0, vec);
+                pixels.setPixelF(x * xScale,x*yScale, vec);
             }
             return pixels;
         }
@@ -115,7 +187,6 @@ class Gradient {
 
         var texture = Texture.fromPixels(genPixels(), RGBA);
         texture.realloc = function() {
-            trace("realloc");
             texture.uploadPixels(genPixels());
         }
         cache.set(hash, texture);
@@ -126,5 +197,4 @@ class Gradient {
     public function toTexture() : h3d.mat.Texture {
         return textureFromData(data);
     }
-
 }

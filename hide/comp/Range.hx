@@ -43,14 +43,20 @@ class Range extends Component {
 		else
 			current = 0;
 
-		root.parent().prev("dt").contextmenu(function(e) {
+		function contextMenu(e) {
 			e.preventDefault();
 			new ContextMenu([
 				{ label : "Reset", click : reset },
+				{ label : "sep", isSeparator: true},
+				{ label : "Copy", click : copy},
+				{ label : "Paste", click: paste, enabled : canPaste()},
+				{ label : "sep", isSeparator: true},
 				{ label : "Cancel", click : function() {} },
 			]);
 			return false;
-		});
+		}
+
+		element.contextmenu(contextMenu);
 
 		f.on("input", function(_) {
 			var v = Math.round(Std.parseFloat(f.val()) * 100 * scale) / 100;
@@ -91,12 +97,33 @@ class Range extends Component {
 		});
 	}
 
+	public function copy() {
+		ide.setClipboard(Std.string(value));
+	}
+
+	public function paste() {
+		var val = getClipboardValue();
+		if (val != null) {
+			set_value(val);
+			onChange(false);
+		}
+	}
+
+	public function canPaste() : Bool {
+		return getClipboardValue() != null;
+	}
+
+	public function getClipboardValue() : Null<Float> {
+		var str = ide.getClipboard();
+		return Std.parseFloat(str);
+	}
+
 	public function reset() {
 		value = original;
 		onChange(false);
 	}
 
-	function set_value(v) {
+	function set_value(v:Float) : Float{
 		if( original == null ) original = v;
 		setInner(v,true);
 		current = v;

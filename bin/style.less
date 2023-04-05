@@ -1,5 +1,13 @@
 @import "common.less";
 
+@font-face {
+	font-family: 'FontAwesome';
+	src: url('libs/fontawesome-webfont.eot?v=4.7.0');
+	src: url('libs/fontawesome-webfont.eot?#iefix&v=4.7.0') format('embedded-opentype'), url('libs/fontawesome-webfont.woff2?v=4.7.0') format('woff2'), url('libs/fontawesome-webfont.woff?v=4.7.0') format('woff'), url('libs/fontawesome-webfont.ttf?v=4.7.0') format('truetype'), url('libs/fontawesome-webfont.svg?v=4.7.0#fontawesomeregular') format('svg');
+	font-weight: normal;
+	font-style: normal;
+}
+
 body {
 	margin : 0;
 	padding : 0;
@@ -545,6 +553,11 @@ input[type=checkbox] {
 		right: 0px;
 	}
 
+	.v-separator {
+		border-left: 1px solid #444;
+		margin: 2px;
+	}
+
 	.toolbar-label, .menu {
 		display: inline-block;
 		min-width : 20px;
@@ -565,56 +578,6 @@ input[type=checkbox] {
 		padding-right: 5px;
 	}
 
-	.button, .toggle {
-		display: inline-block;
-		user-select:none;
-		border: 1px solid rgb(90,90,90);
-		min-width : 20px;
-		padding : 2px;
-		text-align: center;
-		border-radius: 1px;
-		text-shadow: 1px 2px 2px black;
-		background: -webkit-linear-gradient(top, rgb(90,90,90), rgb(50,50,50));
-		cursor : pointer;
-		font-size: 16px;
-		vertical-align: middle;
-		&:hover {
-			color : white;
-			border-color : white;
-			background-color : #666;
-		}
-		label {
-			font-size: 12px;
-			margin-left: 6px;
-			margin-right: 6px;
-			text-shadow: none;
-		}
-		label.locked {
-			color: #000;
-			font-style: italic;
-		}
-	}
-
-	.toggle.toggled {
-		color : #ddd;
-		background : #777;
-		padding-top: 2px;
-		padding-bottom: 1px;
-		text-shadow: none;
-		border-top-width: 2px;
-		border-top-color: #444;
-		&:hover {
-			border-top-width: 1px;
-			padding-top: 3px;
-			border-top-color : white;
-		}
-	}
-
-	.button:active {
-		padding-top: 3px;
-		padding-bottom: 1px;
-	}
-
 	.select {
 		padding : 2px;
 		padding-top: 4px;
@@ -629,12 +592,210 @@ input[type=checkbox] {
 			min-width : 100px;
 		}
 	}
+
+	.button, .toggle {
+		.button();
+		margin-left: 1px;
+		margin-right: 1px;
+	}
 }
 
-.prefab-toolbar {
-	.button, .toggle {
-		margin-right : 5px;
+.hide-toolbar2 {
+	display: flex;
+	align-items: center;
+	margin-top: 2px;
+	margin-bottom: 2px;
+}
+
+.tb-group {
+	display: inline-flex;
+	margin-left: 2px;
+	margin-right: 2px;
+
+	&.small > * {
+		height: 18px;
+		min-width: 18px;
+
+		.icon {
+			font-size: 10px;
+		}
 	}
+
+	&.big > * {
+		height: 30px;
+		min-width: 30px;
+
+		.icon {
+			font-size: 16px;
+		}
+	}
+
+	&> * {
+		display:inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid @color-border;
+		border-right-width: 0px;
+		height: 26px;
+		min-width: 26px;
+
+		background: @color-tool-bg;
+
+		box-shadow: 1px 1px 1px rgba(.0,.0,.0,.75);
+		font-size: 12px;
+
+		color: @color-text;
+
+		.icon {
+			font-size: 14px;
+		}
+
+		.label {
+			font-family : Verdana, serif;
+			display: inline-block;
+			margin-left: 6px;
+			margin-right: 6px;
+			user-select: none;
+		}
+
+		&:first-child {
+			border-top-left-radius: 4px;
+			border-bottom-left-radius: 4px;
+		}
+
+		&:last-child {
+			border-right-width: 1px;
+			border-top-right-radius: 4px;
+			border-bottom-right-radius: 4px;
+		}
+
+		&.button2:hover {
+			border-color: @color-border-hover;
+			background: @color-tool-bg-hover;
+		}
+
+		&.button2:active, &.button2[checked], &.menu:active {
+			background: @color-highlight-gray;
+		}
+
+		&.menu {
+			background: @color-menu-bg;
+
+			&:hover {
+				background: @color-menu-bg-highlight;
+			}
+		}
+
+		&.menu:after {
+			font-family: FontAwesome;
+			content: "\f107";
+			vertical-align: middle;
+			margin-right: 2px;
+
+		}
+	}
+
+}
+
+.button() {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	user-select:none;
+	border: 1px solid rgb(90,90,90);
+	min-width : 20px;
+	min-height : 20px;
+	padding : 2px;
+	text-align: center;
+	border-radius: 1px;
+	text-shadow: 1px 2px 2px black;
+	background: -webkit-linear-gradient(top, rgb(90,90,90), rgb(50,50,50));
+	cursor : pointer;
+	font-size: 16px;
+	vertical-align: middle;
+	&:hover {
+		color : white;
+		border-color : white;
+		background-color : #666;
+	}
+	label {
+		font-size: 12px;
+		margin-left: 6px;
+		margin-right: 6px;
+		text-shadow: none;
+	}
+	label.locked {
+		color: #000;
+		font-style: italic;
+	}
+
+	&.toggled {
+		color : #ddd;
+		background : #777;
+		padding-top: 2px;
+		padding-bottom: 1px;
+		text-shadow: none;
+		border-top-width: 2px;
+		border-top-color: #444;
+		&:hover {
+			border-top-width: 1px;
+			padding-top: 3px;
+			border-top-color : white;
+		}
+	}
+}
+
+.hide-button, .hide-toggle {
+	.button();
+}
+
+.link-container {
+	margin-top: 4px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-around;
+
+	.link {
+		flex: 1 0;
+		align-self: center;
+		width: 33%;
+		margin-right: 33%;
+		height: 100%;
+		border-right: solid 1px gray;
+	}
+
+	.link-up {
+		margin-top: 4px;
+		margin-bottom: 2px;
+		border-top: solid 1px gray;
+	}
+
+	.link-down {
+		margin-top: 2px;
+		margin-bottom: 4px;
+		border-bottom: solid 1px gray;
+	}
+
+	.hide-button {
+		min-width: 12px;
+		min-height: 12px;
+		width: 12px;
+		height: 12px;
+		font-size: 9px;
+	}
+}
+
+.hide-button.change-button {
+	font-size: 12px;
+	min-height: 13px;
+	min-width: 13px;
+	height: 13px;
+	width: 13px;
+}
+
+.button:active {
+	padding-top: 3px;
+	padding-bottom: 1px;
 }
 
 .hide-list {
@@ -2378,9 +2539,13 @@ div.sp-container {
 
 div.color-box {
 	display: inline-flex;
+	cursor: pointer;
 }
 
 div.popup {
+	background-color : rgb(40, 40, 41);
+	border : 1px solid rgb(51, 51, 51);
+
 	position: absolute;
 	overflow: visible;
 	z-index: 900;
@@ -2389,13 +2554,44 @@ div.popup {
 
 	&:focus {
 		outline: none;
-	} 
+	}
+
+	padding: 6px;
+}
+
+.settings-popup {
+	padding: 8px;
+
+	p {
+		margin-top: 0;
+		margin-bottom: 0;
+		text-align: center;
+	}
+
+	select {
+		width: auto;
+		width: fit-content;
+    	margin-left: 2px;
+	}
+
+	.form-grid {
+		display: grid;
+		grid-template-columns: auto 1fr;
+	}
+
+	label {
+		text-align: right;
+		padding-right: 8px;
+	}
+
+	.hide-grid {
+		visibility: hidden;
+		height: 0px;
+	}
 }
 
 div.color-picker {
-	background-color : rgb(40, 40, 41);
-	border : 1px solid rgb(51, 51, 51);
-
+	padding:0;
 
 	.vbox {
 		display: flex;
@@ -2468,6 +2664,8 @@ div.gradient-box {
     font-size: 9pt;
 
 	border: 1px solid #444;
+
+	cursor: pointer;
 }
 
 .gradient-editor {

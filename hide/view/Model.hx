@@ -84,7 +84,7 @@ class Model extends FileView {
 	override function onDisplay() {
 		element.html('
 			<div class="flex vertical">
-				<div class="toolbar"></div>
+				<div id="toolbar"></div>
 				<div class="flex-elt">
 					<div class="heaps-scene">
 						<div class="hide-scroll hide-scene-layer">
@@ -114,7 +114,7 @@ class Model extends FileView {
 				</div>
 			</div>
 		');
-		tools = new hide.comp.Toolbar(null,element.find(".toolbar"));
+		tools = new hide.comp.Toolbar(null,element.find("#toolbar"));
 		overlay = element.find(".hide-scene-layer .tree");
 		tabs = new hide.comp.Tabs(null,element.find(".tabs"));
 		eventList = element.find(".event-editor");
@@ -245,6 +245,7 @@ class Model extends FileView {
 						${[for( i in 0...materials.length ) '<option value="${materials[i].path + "/" + materials[i].mat.name}" ${(selected == materials[i].path + "/" + materials[i].mat.name) ? 'selected' : ''}>${materials[i].mat.name}</option>'].join("")}
 					</select>
 				</dd>
+				<dt></dt><dd><input type="button" value="Go to library" class="goTo"/></dd>
 				<dt></dt><dd><input type="button" value="Save" class="save"/></dd>
 			</div>
 			<br/>
@@ -273,6 +274,12 @@ class Model extends FileView {
 				matEl.show();
 				def = true;
 				selectMaterial(m);
+			}
+		});
+		matLibrary.find(".goTo").click(function(_) {
+			var mat = findMat(matLibrary.find(".matLib").val());
+			if ( mat != null ) {
+				ide.openFile(mat.path);
 			}
 		});
 		matLibrary.find(".save").click(function(_) {
@@ -437,6 +444,10 @@ class Model extends FileView {
 	}
 
 	function onRefresh() {
+		this.saveDisplayKey = "Model:" + state.path;
+
+		sceneEditor.loadSavedCameraController3D(true);
+
 		var r = root.get(hrt.prefab.RenderProps);
 		if( r != null ) r.applyProps(scene.s3d.renderer);
 
@@ -471,10 +482,9 @@ class Model extends FileView {
 		tree.onSelectMaterial = selectMaterial;
 		tree.onSelectObject = selectObject;
 
-		this.saveDisplayKey = "Model:" + state.path;
 		tree.saveDisplayKey = this.saveDisplayKey;
 
-		tools.element.empty();
+		tools.clear();
 		var anims = scene.listAnims(getPath());
 
 		if( anims.length > 0 ) {
@@ -485,7 +495,16 @@ class Model extends FileView {
 			}];
 			content.unshift({ label : "-- no anim --", value : null });
 			sel.setContent(content);
-			sel.onSelect = setAnimation;
+			sel.onSelect = function(file:String) {
+				if (scene.editor.view.modified && !js.Browser.window.confirm("Current animation has been modified, change animation without saving?"))
+				{
+					var idx = anims.indexOf(currentAnimation.file)+1;
+					sel.element.find("select").val(""+idx);
+					return;
+				}
+
+				setAnimation(file);
+			};
 		}
 
 		tools.saveDisplayKey = "ModelTools";
@@ -493,6 +512,10 @@ class Model extends FileView {
 		tools.addButton("video-camera", "Reset Camera", function() {
 			sceneEditor.resetCamera();
 		});
+
+		tools.makeToolbar([{id: "camSettings", title : "Camera Settings", icon : "camera", type : Popup((e : hide.Element) -> new hide.comp.CameraControllerEditor(sceneEditor, null,e)) }], null, null);
+
+		tools.addSeparator();
 
 		var axes = makeAxes();
 		axes.visible = false;
@@ -515,9 +538,11 @@ class Model extends FileView {
 			scene.engine.backgroundColor = v;
 		}, scene.engine.backgroundColor);
 
+		tools.addSeparator();
+
 		var viewModesMenu = tools.addMenu(null, "View Modes");
 		var items : Array<hide.comp.ContextMenu.ContextMenuItem> = [];
-		viewModes = ["LIT", "Full", "Albedo", "Normal", "Roughness", "Metalness", "Emissive", "AO", "Shadows"];
+		viewModes = ["LIT", "Full", "Albedo", "Normal", "Roughness", "Metalness", "Emissive", "AO", "Shadows", "Performance"];
 		for(typeid in viewModes) {
 			items.push({label : typeid, click : function() {
 				var r = Std.downcast(scene.s3d.renderer, h3d.scene.pbr.Renderer);
@@ -553,6 +578,8 @@ class Model extends FileView {
 					case "Shadows":
 						r.displayMode = Debug;
 						slides.shader.mode = Shadow;
+					case "Performance":
+						r.displayMode = Performance;
 					default:
 				}
 			}
@@ -561,6 +588,8 @@ class Model extends FileView {
 		viewModesMenu.setContent(items);//, {id: "viewModes", title : "View Modes", type : Menu(filtersToMenuItem(viewModes, "View"))});
 		var el = viewModesMenu.element;
 		el.addClass("View Modes");
+
+		tools.addSeparator();
 
 		aloop = tools.addToggle("refresh", "Loop animation", function(v) {
 			if( obj.currentAnimation != null ) {
@@ -650,6 +679,7 @@ class Model extends FileView {
 	}
 
 	function setAnimation( file : String ) {
+
 		scene.setCurrent();
 		if( timeline != null ) {
 			timeline.remove();
@@ -799,6 +829,9 @@ class Model extends FileView {
 					var event = events[i][j];
 					var tf = new h2d.TextInput(hxd.res.DefaultFont.get(), timeline);
 					tf.backgroundColor = 0xFF0000;
+					tf.onFocus = function(e) {
+						sceneEditor.view.keys.pushDisable();
+					}
 					tf.onFocusLost = function(e){
 						events[i][j] = tf.text;
 						if( tf.text == "" ) {
@@ -808,6 +841,7 @@ class Model extends FileView {
 						buildTimeline();
 						buildEventPanel();
 						modified = true;
+						sceneEditor.view.keys.popDisable();
 					}
 					tf.text = event;
 					tf.x = px - Std.int(tf.textWidth * 0.5);
@@ -871,7 +905,6 @@ class Model extends FileView {
 
 	function update(dt:Float) {
 		var cam = scene.s3d.camera;
-		saveDisplayState("Camera", { x : cam.pos.x, y : cam.pos.y, z : cam.pos.z, tx : cam.target.x, ty : cam.target.y, tz : cam.target.z });
 		if( light != null ) {
 			if( !sceneEditor.isSelected(plight) )
 				lightDirection = light.getLocalDirection();

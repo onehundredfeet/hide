@@ -5,6 +5,16 @@ class Keys {
 	var keys = new Map<String,Void->Void>();
 	var parent : js.html.Element;
 	var listeners = new Array<js.jquery.Event -> Bool>();
+	var disabledStack : Int = 0;
+
+	public function pushDisable() {
+		
+		disabledStack ++;
+	}
+
+	public function popDisable() {
+		disabledStack--;
+	}
 
 	public function new( parent : Element ) {
 		if( parent != null ) {
@@ -31,6 +41,8 @@ class Keys {
 	}
 
 	public function processEvent( e : js.jquery.Event, config : Config ) {
+		if (disabledStack > 0)
+			return false;
 		var parts = [];
 		if( e.altKey )
 			parts.push("Alt");

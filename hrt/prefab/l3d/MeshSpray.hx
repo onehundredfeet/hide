@@ -6,15 +6,6 @@ import hrt.prefab.l3d.Spray;
 class MeshSprayObject extends Spray.SprayObject {
 	public var batches : Array<h3d.scene.MeshBatch> = [];
 	public var batchesMap : Map<Int,Map<String,{ batch : h3d.scene.MeshBatch, pivot : h3d.Matrix }>> = [];
-	override function getMaterials( ?arr : Array<h3d.mat.Material>, recursive=true ) {
-		if( !recursive ) {
-			// batches materials are considered local materials
-			if( arr == null ) arr = [];
-			for( b in batches )
-				arr = b.getMaterials(arr, false);
-		}
-		return super.getMaterials(arr,recursive);
-	}
 }
 
 class MeshSpray extends Spray {
@@ -190,16 +181,6 @@ class MeshSprayObject extends Spray.SprayObject {
 	var mlookup : Map<String, h3d.scene.Mesh> = [];
 	public var editChildren : Bool;
 
-	override function getMaterials( ?arr : Array<h3d.mat.Material>, recursive=true ) {
-		if( !recursive ) {
-			// batches materials are considered local materials
-			if( arr == null ) arr = [];
-			for( b in batches )
-				arr = b.getMaterials(arr, false);
-		}
-		return super.getMaterials(arr,recursive);
-	}
-
 	override function emitRec(ctx:h3d.scene.RenderContext) {
 		for( b in batches ) {
 			var p = b.material.getPass("highlight");
@@ -208,13 +189,18 @@ class MeshSprayObject extends Spray.SprayObject {
 		super.emitRec(ctx);
 	}
 
+	override function getMaterials( ?arr : Array<h3d.mat.Material>, recursive=true ) {
+		// Allows hrt.prefab.Shader if editChildren
+		return super.getMaterials(arr,editChildren ? true : recursive);
+	}
+
 	function getBatch( m : h3d.scene.Mesh ) {
 		var batch = blookup.get(m.primitive);
 		if( batch == null ) {
 			batch = new h3d.scene.MeshBatch(cast(m.primitive,h3d.prim.MeshPrimitive), m.material, this);
 			var multi = Std.downcast(m, h3d.scene.MultiMaterial);
 			if( multi != null ) batch.materials = multi.materials;
-			batch.alwaysSync = true;
+			batch.alwaysSyncAnimation = true;
 			batch.begin();
 			batches.push(batch);
 			blookup.set(m.primitive, batch);
@@ -243,7 +229,7 @@ class MeshSprayObject extends Spray.SprayObject {
 		}
 		for( c in children ) {
 			c.culled = false;
-			if( c.alwaysSync ) continue;
+			if( c.alwaysSyncAnimation ) continue;
 			var m = Std.downcast(c, h3d.scene.Mesh);
 			if( m == null || !Std.isOfType(m.primitive, h3d.prim.MeshPrimitive) ) continue;
 
@@ -743,7 +729,9 @@ class MeshSpray extends Spray {
 
 	override function createInteractiveBrush(ectx : EditContext) {
 		super.createInteractiveBrush(ectx);
+		if (!enabled) return;
 		var ctx = ectx.getContext(this);
+
 		var s2d = ctx.shared.root2d.getScene();
 
 		interactive.onMove = function(e) {

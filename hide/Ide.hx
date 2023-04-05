@@ -46,6 +46,7 @@ class Ide {
 	var defaultLayout : { name : String, state : Config.LayoutState };
 	var currentFullScreen(default,set) : hide.ui.View<Dynamic>;
 	var maximized : Bool;
+	var fullscreen : Bool;
 	var updates : Array<Void->Void> = [];
 	var views : Array<hide.ui.View<Dynamic>> = [];
 
@@ -53,6 +54,8 @@ class Ide {
 	var subView : { component : String, state : Dynamic, events : {} };
 	var scripts : Map<String,Array<Void->Void>> = new Map();
 	var hasReloaded = false;
+
+	public var show3DIcons = true;
 
 	static var firstInit = true;
 
@@ -143,8 +146,16 @@ class Ide {
 			mouseX = e.x;
 			mouseY = e.y;
 		});
-		window.on('maximize', function() { maximized = true; onWindowChange(); });
-		window.on('restore', function() { maximized = false; onWindowChange(); });
+		window.on('maximize', function() {
+			if(fullscreen) return;
+			maximized = true;
+			onWindowChange();
+		});
+		window.on('restore', function() {
+			if(fullscreen) return;
+			maximized = false;
+			onWindowChange();
+		});
 		window.on('move', function() haxe.Timer.delay(onWindowChange,100));
 		window.on('resize', function() haxe.Timer.delay(onWindowChange,100));
 		window.on('close', function() {
@@ -427,6 +438,7 @@ class Ide {
 
 	public function setFullscreen(b : Bool) {
 		if (b) {
+			fullscreen = true;
 			window.maximize();
 			saveMenu = window.menu;
 			window.menu = null;
@@ -434,6 +446,13 @@ class Ide {
 		} else {
 			window.menu = saveMenu;
 			window.leaveFullscreen();
+
+			// NWJS bug: changing fullscreen triggers spurious "restore" events
+			haxe.Timer.delay(function() {
+				fullscreen = false;
+				if(maximized)
+					window.maximize();
+			}, 150);
 		}
 	}
 
@@ -522,6 +541,36 @@ class Ide {
 		if( haxe.io.Path.isAbsolute(relPath) )
 			return relPath;
 		return resourceDir+"/"+relPath;
+	}
+
+	static var textureCacheKey = "TextureCache";
+
+	public function getHideResPath(basePath:String) {
+		return getPath("${HIDE}/res/" + basePath);
+	}
+
+	// Get a texture from a file on disk. Cache the results
+    public function getTexture(fullPath:String) {
+		if (fullPath == null)
+			return null;
+
+		var engine = h3d.Engine.getCurrent();
+		var cache : Map<String, h3d.mat.Texture> = @:privateAccess engine.resCache.get(textureCacheKey);
+		if(cache == null) {
+			cache = new Map();
+			@:privateAccess engine.resCache.set(textureCacheKey, cache);
+		}
+
+		var tex = cache[fullPath];
+		if (tex != null)
+			return tex;
+
+        var data = sys.io.File.getBytes(fullPath);
+		var res = hxd.res.Any.fromBytes(fullPath, data);
+		tex = res.toImage().toTexture();
+
+		cache.set(fullPath, tex);
+		return tex;
 	}
 
 	public function resolveCDBValue( path : String, key : Dynamic, obj : Dynamic ) : Dynamic {

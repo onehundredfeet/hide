@@ -172,7 +172,7 @@ private class FXSceneEditor extends hide.comp.SceneEditor {
 				});
 			}
 		} else {
-			for(name in ["Group", "Polygon", "Model", "Shader", "Emitter"]) {
+			for(name in ["Group", "Polygon", "Model", "Shader", "Emitter", "Trails"]) {
 				var item = allTypes.find(i -> i.label == name);
 				if(item == null) continue;
 				allTypes.remove(item);
@@ -281,6 +281,8 @@ class FXEditor extends FileView {
 	var scriptEditor : hide.comp.ScriptEditor;
 	var fxScriptParser : hrt.prefab.fx.FXScriptParser;
 	var cullingPreview : h3d.scene.Sphere;
+
+	var viewModes : Array<String>;
 
 	override function getDefaultContent() {
 		return haxe.io.Bytes.ofString(ide.toJSON(new hrt.prefab.fx.FX().saveData()));
@@ -592,8 +594,68 @@ class FXEditor extends FileView {
 		cullingPreview = new h3d.scene.Sphere(0xffffff, data.cullingRadius, true, scene.s3d);
 		cullingPreview.visible = (!is2D) ? showGrid : false;
 
+		var toolsDefs = new Array<hide.comp.Toolbar.ToolDef>();
+		toolsDefs.push({id: "perspectiveCamera", title : "Perspective camera", icon : "video-camera", type : Button(() -> sceneEditor.resetCamera()) });
+		toolsDefs.push({id: "camSettings", title : "Camera Settings", icon : "camera", type : Popup((e : hide.Element) -> new hide.comp.CameraControllerEditor(sceneEditor, null,e)) });
+
+		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
+
+		toolsDefs.push({id: "translationMode", title : "Gizmo translation Mode", icon : "arrows", type : Button(@:privateAccess sceneEditor.gizmo.translationMode), rightClick: () -> {
+			var items = [{
+				label : "Snap to Grid",
+				click : function() {
+					@:privateAccess sceneEditor.gizmo.snapToGrid = !sceneEditor.gizmo.snapToGrid;
+				},
+				checked: @:privateAccess sceneEditor.gizmo.snapToGrid
+			}];
+			var steps : Array<Float> = sceneEditor.view.config.get("sceneeditor.gridSnapSteps");
+			for (step in steps) {
+				items.push({
+					label : ""+step,
+					click : function() {
+						@:privateAccess sceneEditor.gizmo.moveStep = step;
+					},
+					checked: @:privateAccess sceneEditor.gizmo.moveStep == step
+				});
+			}
+			new hide.comp.ContextMenu(items);
+		}});
+		toolsDefs.push({id: "rotationMode", title : "Gizmo rotation Mode", icon : "refresh", type : Button(@:privateAccess sceneEditor.gizmo.rotationMode),  rightClick: () -> {
+			var steps : Array<Float> = sceneEditor.view.config.get("sceneeditor.rotateStepCoarses");
+			var items = [{
+				label : "Snap enabled",
+				click : function() {
+					@:privateAccess sceneEditor.gizmo.rotateSnap = !sceneEditor.gizmo.rotateSnap;
+				},
+				checked: @:privateAccess sceneEditor.gizmo.rotateSnap
+			}];
+			for (step in steps) {
+				items.push({
+					label : ""+step+"°",
+					click : function() {
+						@:privateAccess sceneEditor.gizmo.rotateStepCoarse = step;
+					},
+					checked: @:privateAccess sceneEditor.gizmo.rotateStepCoarse == step
+				});
+			}
+			new hide.comp.ContextMenu(items);
+		}});
+		toolsDefs.push({id: "scalingMode", title : "Gizmo scaling Mode", icon : "expand", type : Button(@:privateAccess sceneEditor.gizmo.scalingMode)});
+
+		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
+
+		toolsDefs.push({id: "localTransformsToggle", title : "Local transforms", icon : "compass", type : Toggle((v) -> sceneEditor.localTransform = v)});
+		
+		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
+
+		toolsDefs.push({id: "gridToggle", title : "Toggle grid", icon : "th", type : Toggle((v) -> { showGrid = v; updateGrid(); }) });
+		toolsDefs.push({id: "axisToggle", title : "Toggle model axis", icon : "cube", type : Toggle((v) -> { sceneEditor.showBasis = v; sceneEditor.updateBasis(); }) });
+		toolsDefs.push({id: "iconVisibility", title : "Toggle 3d icons visibility", icon : "image", type : Toggle((v) -> { hide.Ide.inst.show3DIcons = v; }), defaultValue: true });
+
+
 		tools.saveDisplayKey = "FXScene/tools";
-		tools.addButton("video-camera", "Perspective camera", () -> sceneEditor.resetCamera());
+		/*tools.addButton("video-camera", "Perspective camera", () -> sceneEditor.resetCamera());
+		tools.addSeparator();
 		tools.addButton("arrows", "Gizmo translation Mode", @:privateAccess sceneEditor.gizmo.translationMode, () -> {
 			var items = [{
 				label : "Snap to Grid",
@@ -614,7 +676,7 @@ class FXEditor extends FileView {
 			}
 			new hide.comp.ContextMenu(items);
 		});
-		tools.addButton("undo", "Gizmo rotation Mode", @:privateAccess sceneEditor.gizmo.rotationMode, () -> {
+		tools.addButton("refresh", "Gizmo rotation Mode", @:privateAccess sceneEditor.gizmo.rotationMode, () -> {
 			var steps : Array<Float> = sceneEditor.view.config.get("sceneeditor.rotateStepCoarses");
 			var items = [{
 				label : "Snap enabled",
@@ -634,7 +696,10 @@ class FXEditor extends FileView {
 			}
 			new hide.comp.ContextMenu(items);
 		});
-		tools.addButton("compress", "Gizmo scaling Mode", @:privateAccess sceneEditor.gizmo.scalingMode);
+		tools.addButton("expand", "Gizmo scaling Mode", @:privateAccess sceneEditor.gizmo.scalingMode);
+
+		tools.addSeparator();
+
 
 		function renderProps() {
 			properties.clear();
@@ -667,6 +732,11 @@ class FXEditor extends FileView {
 			cullingPreview.visible = (is2D) ? false : v;
 			updateGrid();
 		}, showGrid);
+
+
+		tools.addToggle("cube", "Toggle model axis", null, (v) -> { sceneEditor.showBasis = v; sceneEditor.updateBasis(); });
+
+		tools.addToggle("image", "Toggle 3d icons visibility", null, function(v) { hide.Ide.inst.show3DIcons = v; }, true);
 		tools.addColor("Background color", function(v) {
 			scene.engine.backgroundColor = v;
 			updateGrid();
@@ -679,7 +749,119 @@ class FXEditor extends FileView {
 		pauseButton = tools.addToggle("pause", "Pause animation", function(v) {}, false);
 		tools.addRange("Speed", function(v) {
 			scene.speed = v;
+		}, scene.speed);*/
+
+		tools.makeToolbar(toolsDefs, config, keys);
+
+		function renderProps() {
+			properties.clear();
+			var renderer = scene.s3d.renderer;
+			var group = new Element('<div class="group" name="Renderer"></div>');
+			renderer.editProps().appendTo(group);
+			properties.add(group, renderer.props, function(_) {
+				renderer.refreshProps();
+				if( !properties.isTempChange ) renderProps();
+			});
+			var lprops = {
+				power : Math.sqrt(light.color.r),
+				enable: true
+			};
+			var group = new Element('<div class="group" name="Light">
+				<dl>
+				<dt>Power</dt><dd><input type="range" min="0" max="4" field="power"/></dd>
+				</dl>
+			</div>');
+			properties.add(group, lprops, function(_) {
+				var p = lprops.power * lprops.power;
+				light.color.set(p, p, p);
+			});
+		}
+		tools.addButton("gears", "Renderer Properties", renderProps);
+		tools.addToggle("refresh", "Auto synchronize", function(b) {
+			autoSync = b;
+		});
+
+		tools.addToggle("connectdevelop", "Wireframe",(b) -> { sceneEditor.setWireframe(b); });
+
+		tools.addColor("Background color", function(v) {
+			scene.engine.backgroundColor = v;
+			updateGrid();
+		}, scene.engine.backgroundColor);
+		tools.addToggle("refresh", "Auto synchronize", function(b) {
+			autoSync = b;
+		});
+
+		tools.addSeparator();
+
+		var viewModesMenu = tools.addMenu(null, "View Modes");
+		var items : Array<hide.comp.ContextMenu.ContextMenuItem> = [];
+		viewModes = ["LIT", "Full", "Albedo", "Normal", "Roughness", "Metalness", "Emissive", "AO", "Shadows", "Performance"];
+		for(typeid in viewModes) {
+			items.push({label : typeid, click : function() {
+				var r = Std.downcast(scene.s3d.renderer, h3d.scene.pbr.Renderer);
+				if ( r == null )
+					return;
+				var slides = @:privateAccess r.slides;
+				if ( slides == null )
+					return;
+				switch(typeid) {
+				case "LIT":
+					r.displayMode = Pbr;
+				case "Full":
+					r.displayMode = Debug;
+					slides.shader.mode = Full;
+				case "Albedo":
+					r.displayMode = Debug;
+					slides.shader.mode = Albedo;
+				case "Normal":
+					r.displayMode = Debug;
+					slides.shader.mode = Normal;
+				case "Roughness":
+					r.displayMode = Debug;
+					slides.shader.mode = Roughness;
+				case "Metalness":
+					r.displayMode = Debug;
+					slides.shader.mode = Metalness;
+				case "Emissive":
+					r.displayMode = Debug;
+					slides.shader.mode = Emmissive;
+				case "AO":
+					r.displayMode = Debug;
+					slides.shader.mode = AO;
+				case "Shadows":
+						r.displayMode = Debug;
+						slides.shader.mode = Shadow;
+				case "Performance":
+					r.displayMode = Performance;
+				default:
+				}
+			}
+			});
+		}
+		viewModesMenu.setContent(items);//, {id: "viewModes", title : "View Modes", type : Menu(filtersToMenuItem(viewModes, "View"))});
+		var el = viewModesMenu.element;
+		el.addClass("View Modes");
+
+		tools.addSeparator();
+
+
+		pauseButton = tools.addToggle("play", "Pause animation", function(v) {}, false, "pause");
+		tools.addRange("Speed", function(v) {
+			scene.speed = v;
 		}, scene.speed);
+
+		var gizmo = @:privateAccess sceneEditor.gizmo;
+
+		var onSetGizmoMode = function(mode: hide.view.l3d.Gizmo.EditMode) {
+			tools.element.find("#translationMode").get(0).toggleAttribute("checked", mode == Translation);
+			tools.element.find("#rotationMode").get(0).toggleAttribute("checked", mode == Rotation);
+			tools.element.find("#scalingMode").get(0).toggleAttribute("checked", mode == Scaling);
+		};
+
+		gizmo.onChangeMode = onSetGizmoMode;
+		onSetGizmoMode(gizmo.editMode);
+
+
 
 		statusText = new h2d.Text(hxd.res.DefaultFont.get(), scene.s2d);
 		statusText.setPosition(5, 5);
@@ -997,10 +1179,10 @@ class FXEditor extends FileView {
 			updateExpanded();
 		});
 		var dopesheet = trackEl.find(".dopesheet");
-		var evaluator = new hrt.prefab.fx.Evaluator(new hxd.Rand(0));
+		var evaluator = new hrt.prefab.fx.Evaluator();
 
 		function getKeyColor(key) {
-			return evaluator.getVector(CurvePrefab.getColorValue(curves), key.time);
+			return evaluator.getVector(Curve.getColorValue(curves), key.time);
 		}
 
 		function dragKey(from: hide.comp.CurveEditor, prevTime: Float, newTime: Float) {
@@ -1181,6 +1363,21 @@ class FXEditor extends FileView {
 			var curveEdit = new hide.comp.CurveEditor(this.undo, curveContainer);
 			curveEdit.saveDisplayKey = dispKey;
 			curveEdit.lockViewX = true;
+
+			curveEdit.requestXZoom = function(xMin, xMax) {
+				var margin = 10.0;
+				var scroll = element.find(".timeline-scroll");
+				var width = scroll.parent().width();
+				xScale = (width - margin * 2.0) / (xMax);
+				xOffset = 0.0;
+
+				curveEdit.xOffset = xOffset;
+				curveEdit.xScale = xScale;
+
+				refreshDopesheet();
+				refreshTimeline(false);
+			}
+
 			if(curves.length > 1)
 				curveEdit.lockKeyX = true;
 			if(["visibility", "s", "l", "a"].indexOf(curve.name.split(".").pop()) >= 0) {
@@ -1749,6 +1946,60 @@ class FXEditor extends FileView {
 
 	}
 
+	var avg_smooth = 0.0;
+	var trailTime_smooth = 0.0;
+	var num_trail_tri_smooth = 0.0;
+
+	public static function floatToStringPrecision(n : Float, ?prec : Int = 2, ?showZeros : Bool = true) {
+		if(n == 0) { // quick return
+			if (showZeros)
+				return "0." + ([for(i in 0...prec) "0"].join(""));
+			return "0";
+		}
+		if (Math.isNaN(n))
+			return "NaN";
+		if (n >= Math.POSITIVE_INFINITY)
+			return "+inf";
+		else if (n <= Math.NEGATIVE_INFINITY)
+			return "-inf";
+
+		var p = Math.pow(10, prec);
+		var fullDec = "";
+
+		if (n > -1. && n < 1) {
+			var minusSign:Bool = (n<0.0);
+			n = Math.abs(n);
+			var val = Math.round(p * n);
+			var str = Std.string(val);
+			var buf:StringBuf = new StringBuf();
+			if (minusSign)
+				buf.addChar("-".code);
+			for (i in 0...(prec + 1 - str.length))
+				buf.addChar("0".code);
+			buf.addSub(str, 0);
+			fullDec = buf.toString();
+		} else {
+			var val = Math.round(p * n);
+			fullDec = Std.string(val);
+		}
+
+		var outStr = fullDec.substr(0, -prec) + '.' + fullDec.substr(fullDec.length - prec, prec);
+		if (!showZeros) {
+			var i = outStr.length - 1;
+			while (i > 0) {
+				if (outStr.charAt(i) == "0")
+					outStr = outStr.substr(0, -1);
+				else if (outStr.charAt(i) == ".") {
+					outStr = outStr.substr(0, -1);
+					break;
+				} else
+					break;
+				i--;
+			}
+		}
+		return outStr;
+	}
+
 	function onUpdate3D(dt:Float) {
 		var ctx = sceneEditor.getContext(data);
 		if(ctx == null || ctx.local3d == null)
@@ -1773,10 +2024,66 @@ class FXEditor extends FileView {
 		for(fx in allFx)
 			fx.setTime(currentTime - fx.startDelay);
 	
+		var emitRateCurrent = 0.0;
+
 		var emitters = ctx.local3d.findAll(o -> Std.downcast(o, hrt.prefab.fx.Emitter.EmitterObject));
 		var totalParts = 0;
-		for(e in emitters)
+		for(e in emitters) {
 			totalParts += @:privateAccess e.numInstances;
+			if (e.emitRateCurrent != null) {
+				emitRateCurrent = e.emitRateCurrent;
+			}
+		}
+
+		var emitterTime = 0.0;
+		for (e in emitters) {
+			emitterTime += e.tickTime;
+		}
+
+		var trails = ctx.local3d.findAll(o -> Std.downcast(o, hrt.prefab.l3d.Trails.TrailObj));
+		var trailCount = 0;
+		var trailTime = 0.0;
+		var trailTris = 0.0;
+		var trailMaxTris = 0;
+		var trailMaxLen = 0;
+		var trailCalcMaxLen = 0;
+		var trailRealIndicies = 0;
+		var trailAllocIndicies = 0;
+
+
+		var poolSize = 0;
+		@:privateAccess
+		for (trail in trails) {
+			for (head in trail.trails) {
+				trailCount ++;
+				var p = head.firstPoint;
+				var len = 0;
+				while(p != null) {
+					len ++;
+					p = p.next;
+				}
+				if (len > trailMaxLen) {
+					trailMaxLen = len;
+				}
+			}
+			trailTime += trail.lastUpdateDuration;
+			trailTris += trail.numVerts;
+
+			var p = trail.pool;
+			while(p != null) {
+				poolSize ++;
+				p = p.next;
+			}
+			trailMaxTris += Std.int(trail.vbuf.length/8.0);
+			trailCalcMaxLen = trail.calcMaxTrailPoints();
+			trailRealIndicies += trail.numVertsIndices;
+			trailAllocIndicies += trail.currentAllocatedIndexCount;
+		}
+
+		var smooth_factor = 0.10;
+		avg_smooth = avg_smooth * (1.0 - smooth_factor) + emitterTime * smooth_factor;
+		trailTime_smooth = trailTime_smooth * (1.0 - smooth_factor) + trailTime * smooth_factor;
+		num_trail_tri_smooth = num_trail_tri_smooth * (1.0-smooth_factor) + trailTris * smooth_factor;
 
 		if(statusText != null) {
 			var lines : Array<String> = [
@@ -1784,7 +2091,27 @@ class FXEditor extends FileView {
 				'Scene objects: ${scene.s3d.getObjectsCount()}',
 				'Drawcalls: ${h3d.Engine.getCurrent().drawCalls}',
 				'Particles: $totalParts',
+				'Particles CPU time: ${floatToStringPrecision(avg_smooth * 1000, 3, true)} ms',
 			];
+
+			if (emitRateCurrent > 0.0) {
+				lines.push('Random emit rate : ${floatToStringPrecision(emitRateCurrent, 3, true)}');
+			}
+
+			if (trailCount > 0) {
+
+				lines.push('Trails CPU time : ${floatToStringPrecision(trailTime_smooth * 1000, 3, true)} ms');
+
+				/*lines.push("---");
+				lines.push('Num Trails : $trailCount');
+				lines.push('Trails Vertexes : ${floatToStringPrecision(num_trail_tri_smooth, 2, true)}');
+				lines.push('Allocated Trails Vertexes : $trailMaxTris');
+				lines.push('Max Trail Lenght : $trailMaxLen');
+				lines.push('Theorical Max Trail Lenght : $trailCalcMaxLen');
+				lines.push('Trail pool : $poolSize');
+				lines.push('Num Indices : $trailRealIndicies');
+				lines.push('Num Allocated Indices : $trailAllocIndicies');*/
+			}
 			statusText.text = lines.join("\n");
 		}
 

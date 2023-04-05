@@ -132,7 +132,7 @@ class Editor extends Component {
 			var c = cursor.getCell();
 			var sub = Std.downcast(c == null ? cursor.table : c.table, SubTable);
 			if( sub != null ) {
-				sub.cell.element.click();
+				sub.cell.elementHtml.click();
 				return;
 			}
 			if( cursor.select != null ) {
@@ -228,10 +228,16 @@ class Editor extends Component {
 		while( filters.indexOf(null) >= 0 )
 			filters.remove(null);
 
-		for( i in 0...filters.length ) {
-			var formatFilter = untyped filters[i].toLowerCase().normalize('NFD');
-			filters[i] = ~/[\u0300-\u036f]/g.map(formatFilter, (r) -> "");
+		function matches(haysack: String, needle: String) {
+			return needle.split(" ").all(f -> haysack.indexOf(f) >= 0);
 		}
+
+		function removeAccents(str: String) {
+			var t = untyped str.toLowerCase().normalize('NFD');
+			return ~/[\u0300-\u036f]/g.map(t, (r) -> "");
+		}
+		for( i in 0...filters.length )
+			filters[i] = removeAccents(filters[i]);
 
 		var all = element.find("table.cdb-sheet > tbody > tr").not(".head");
 		if( config.get("cdb.filterIgnoreSublist") )
@@ -249,9 +255,8 @@ class Editor extends Component {
 			}
 
 			for( t in lines ) {
-				var content = untyped t.textContent.toLowerCase().normalize('NFD');
-				content = ~/[\u0300-\u036f]/g.map(content, (r) -> "");
-				if( !filters.any(f -> content.indexOf(f) >= 0) )
+				var content = removeAccents(t.textContent);
+				if( !filters.any(f -> matches(content, f)) )
 					t.classList.add("filtered");
 			}
 			for( t in lines ) {
@@ -421,7 +426,7 @@ class Editor extends Component {
 				var obj = line.obj;
 				formulas.removeFromValue(obj, col);
 				if (col.type == TId)
-					value = getNewUniqueId(value, cursor.table, col);
+					value = ensureUniqueId(value, cursor.table, col);
 				Reflect.setField(obj, col.name, value);
 			} else {
 				beginChanges();
@@ -438,7 +443,7 @@ class Editor extends Component {
 						var obj = sheet.lines[y];
 						formulas.removeFromValue(obj, col);
 						if (col.type == TId)
-							value = getNewUniqueId(value, cursor.table, col);
+							value = ensureUniqueId(value, cursor.table, col);
 						Reflect.setField(obj, col.name, value);
 						toRefresh.push(allLines[y].cells[x]);
 					}
@@ -476,7 +481,7 @@ class Editor extends Component {
 				v = base.getDefault(destCol, sheet);
 
 			if (destCol.type == TId) {
-				v = getNewUniqueId(v, cursor.table, destCol);
+				v = ensureUniqueId(v, cursor.table, destCol);
 			}
 			if( v == null )
 				Reflect.deleteField(destObj, destCol.name);
@@ -563,6 +568,16 @@ class Editor extends Component {
 		if( sel == null )
 			return;
 		var hasChanges = false;
+		var sheet = cursor.table.sheet;
+		var id = getCursorId(sheet, true);
+		if( id != null && id.length > 0) {
+			var refs = getReferences(id, sheet);
+			if( refs.length > 0 ) {
+				var message = refs.join("\n");
+				if( !ide.confirm('$id is referenced elswhere. Are you sure you want to delete?\n$message') )
+					return;
+			}
+		}
 		beginChanges();
 		if( cursor.x < 0 ) {
 			// delete lines
@@ -573,7 +588,7 @@ class Editor extends Component {
 			}
 			while( y >= sel.y1 ) {
 				var line = cursor.table.lines[y];
-				line.table.sheet.deleteLine(line.index);
+				sheet.deleteLine(line.index);
 				hasChanges = true;
 				y--;
 			}
@@ -587,7 +602,7 @@ class Editor extends Component {
 					if( !line.cells[x].canEdit() )
 						continue;
 					var old = Reflect.field(line.obj, c.name);
-					var def = base.getDefault(c,false,cursor.table.sheet);
+					var def = base.getDefault(c,false,sheet);
 					if( old == def )
 						continue;
 					changeObject(line,c,def);
@@ -832,18 +847,18 @@ class Editor extends Component {
 		inRefreshAll = false;
 	}
 
-	public function getReferences(?id: String, withCodePaths = true, ?sheet) {
-		if (sheet == null)
+	public function getCursorId(?sheet, ?childOnly = false): String {
+		var id: String = null;
+		if( sheet == null )
 			sheet = cursor.table.sheet;
-		if( id == null) {
-			var cell = cursor.getCell();
-			switch (cell == null ? null : cell.column.type) {
-				case TRef(sname):
-					id = cell.value;
-					sheet = base.getSheet(sname);
-				case TId:
-					id = cell.value;
-				default:
+		var cell = cursor.getCell();
+		switch (cell == null ? null : cell.column.type) {
+			case TRef(sname):
+				id = cell.value;
+			case TId:
+				id = cell.value;
+			default:
+				if (!childOnly || cursor.x < 0) {
 					for( c in sheet.columns ) {
 						switch( c.type ) {
 						case TId:
@@ -852,10 +867,13 @@ class Editor extends Component {
 						default:
 						}
 					}
-			}
+				}
 		}
-
-		if( id == null ) return [];
+		return id;
+	}
+	public function getReferences(id: String, withCodePaths = true, sheet: cdb.Sheet) {
+		if( id == null )
+			return [];
 
 		var results = sheet.getReferencesFromId(id);
 		var message = [];
@@ -946,7 +964,21 @@ class Editor extends Component {
 
 	public function showReferences(?id: String, ?sheet: cdb.Sheet) {
 		if( cursor.table == null ) return;
-		var message = getReferences(id, sheet);
+		if( sheet == null )
+			sheet = cursor.table.sheet;
+		if( id == null )
+			id = getCursorId(sheet);
+		var cell = cursor.getCell();
+		if (cell != null) {
+			switch (cell.column.type) {
+				case TRef(sname):
+					sheet = base.getSheet(sname);
+				default:
+			}
+		}
+		var message = [];
+		if( id != null )
+			message = getReferences(id, sheet);
 		if( message.length == 0 ) {
 			ide.message("No reference found");
 			return;
@@ -986,7 +1018,9 @@ class Editor extends Component {
 	}
 
 	function isUniqueID( sheet : cdb.Sheet, obj : {}, id : String ) {
-		var uniq = base.getSheet(sheet.name).index.get(id);
+		var idx = base.getSheet(sheet.name).index;
+
+		var uniq = idx.get(id);
 		return uniq == null || uniq.obj == obj;
 	}
 
@@ -1186,7 +1220,7 @@ class Editor extends Component {
 	}
 
 	public function insertLine( table : Table, index = 0 ) {
-		if( !table.canInsert() )
+		if( table == null || !table.canInsert() )
 			return;
 		if( table.displayMode == Properties ) {
 			var ins = table.element.find("select.insertField");
@@ -1219,6 +1253,16 @@ class Editor extends Component {
 		table.sheet.newLine(index);
 		endChanges();
 		table.refresh();
+	}
+
+	public function ensureUniqueId(originalId : String, table : Table, column : cdb.Data.Column) {
+		var scope = table.getScope();
+		var idWithScope : String = if(column.scope != null)  table.makeId(scope, column.scope, originalId) else originalId;
+
+		if (isUniqueID(table.getRealSheet(), {}, idWithScope)) {
+			return originalId;
+		}
+		return getNewUniqueId(originalId, table, column);
 	}
 
 	public function getNewUniqueId(originalId : String, table : Table, column : cdb.Data.Column) {
@@ -1557,6 +1601,15 @@ class Editor extends Component {
 				focus();
 			}, keys : config.get("key.duplicate") },
 			{ label : "Delete", click : function() {
+				var id = line.getId();
+				if( id != null && id.length > 0) {
+					var refs = getReferences(id, sheet);
+					if( refs.length > 0 ) {
+						var message = refs.join("\n");
+						if( !ide.confirm('$id is referenced elswhere. Are you sure you want to delete?\n$message') )
+							return;
+					}
+				}
 				beginChanges();
 				sheet.deleteLine(line.index);
 				endChanges();

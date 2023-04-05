@@ -27,7 +27,6 @@ class FXAnimation extends h3d.scene.Object {
 	public var shaderAnims : Array<ShaderAnimation> = [];
 	public var constraints : Array<hrt.prefab.l3d.Constraint>;
 
-	public var vecPool = new Evaluator.VecPool();
 	var evaluator : Evaluator;
 	var parentFX : FXAnimation;
 	var random : hxd.Rand;
@@ -39,8 +38,7 @@ class FXAnimation extends h3d.scene.Object {
 		super(parent);
 		randSeed = #if editor 0 #else Std.random(0xFFFFFF) #end;
 		random = new hxd.Rand(randSeed);
-		evaluator = new Evaluator(random);
-		evaluator.vecPool = vecPool;
+		evaluator = new Evaluator();
 		name = "FXAnimation";
 		inheritCulled = true;
 	}
@@ -51,21 +49,22 @@ class FXAnimation extends h3d.scene.Object {
 		initObjAnimations(ctx, root);
 		initEmitters(ctx, root);
 		BaseFX.getShaderAnims(ctx, root, shaderAnims);
+		if(shaderAnims.length == 0) shaderAnims = null;
 		events = initEvents(root, ctx);
 		var root = def.getFXRoot(ctx, def);
 		initConstraints(ctx, root != null ? root : def);
-		for(s in shaderAnims)
-			s.vecPool = vecPool;
 	}
 
-	override function onRemove() {
-		super.onRemove();
-		if(objAnims != null)
-			for(obj in objAnims)
-				obj.obj.remove();
-		if(emitters != null)
-			for(emitter in emitters)
-				emitter.reset();
+	public function reset() {
+		firstSync = true;
+		prevTime = -1.0;
+		localTime = 0;
+		if(parentFX == null) {
+			for(c in findAll(o -> Std.downcast(o, FXAnimation))) {
+				if(c != this)
+					c.reset();
+			}
+		}
 	}
 
 	public function setRandSeed(seed: Int) {
@@ -110,7 +109,7 @@ class FXAnimation extends h3d.scene.Object {
 		if( !visible || (culled && inheritCulled) )
 			ctx.visibleFlag = false;
 
-		var fullSync = ctx.visibleFlag || alwaysSync || firstSync;
+		var fullSync = ctx.visibleFlag || alwaysSyncAnimation || firstSync;
 		var finishedPlaying = false;
 		if(playSpeed > 0 || firstSync) {
 			// This is done in syncRec() to make sure time and events are updated regarless of culling state,
@@ -146,7 +145,6 @@ class FXAnimation extends h3d.scene.Object {
 	public function setTime( time : Float, fullSync=true ) {
 		this.localTime = time;
 		if(fullSync) {
-			vecPool.begin();
 			if(objAnims != null) {
 				for(anim in objAnims) {
 					if(anim.scale != null || anim.rotation != null || anim.position != null) {

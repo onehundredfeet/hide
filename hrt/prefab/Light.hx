@@ -62,6 +62,14 @@ class Light extends Object3D {
 	@:s public var autoShrink : Bool = true;
 	@:s public var autoZPlanes : Bool = false;
 
+	// Cascade
+	@:s public var cascade : Bool = false;
+	@:s public var cascadeNbr : Int = 1;
+	@:s public var cascadePow : Float = 2;
+	@:s public var firstCascadeSize : Float = 10;
+	@:s public var castingMaxDist : Float = 0.0;
+	@:s public var debugShader : Bool = false;
+
 	// Debug
 	@:s public var debugDisplay : Bool = true;
 
@@ -139,7 +147,7 @@ class Light extends Object3D {
 		} else {
 			switch( kind ) {
 			case Point: ctx.local3d = new h3d.scene.pbr.PointLight(ctx.local3d);
-			case Directional: ctx.local3d = new h3d.scene.pbr.DirLight(ctx.local3d);
+			case Directional: ctx.local3d = new h3d.scene.pbr.DirLight(ctx.local3d, cascade);
 			case Spot: ctx.local3d = new h3d.scene.pbr.SpotLight(ctx.local3d);
 			}
 		}
@@ -169,6 +177,15 @@ class Light extends Object3D {
 					s.minDist = minDist;
 					s.autoShrink = autoShrink;
 					s.autoZPlanes = autoZPlanes;
+					var cs = Std.downcast(s, h3d.pass.CascadeShadowMap);
+					if ( cs != null ) {
+						cs.cascade = cascadeNbr;
+						cs.pow = cascadePow;
+						cs.firstCascadeSize = firstCascadeSize;
+						cs.debug = debugDisplay;
+						cs.castingMaxDist = castingMaxDist;
+						cs.debugShader = debugShader;
+					}
 				}
 			case Spot:
 				var sl = Std.downcast(light, h3d.scene.pbr.SpotLight);
@@ -387,8 +404,17 @@ class Light extends Object3D {
 			group.append(hide.comp.PropsEditor.makePropsList([
 				{ name: "maxDist", t: PFloat(0, 1000), def: -1 },
 				{ name: "minDist", t: PFloat(0, 50), def: -1 },
-				{ name: "autoShrink", t: PBool, def: true },
-				{ name: "autoZPlanes", t: PBool, def: false },
+				{ name: "autoShrink", t: PBool, def: true }
+			]));
+
+			if ( autoShrink ) {
+				group.append(hide.comp.PropsEditor.makePropsList([
+					{ name: "autoZPlanes", t: PBool, def: false }
+				]));
+			}
+
+			group.append(hide.comp.PropsEditor.makePropsList([
+				{ name: "cascade", t: PBool, def: false }
 			]));
 		case Spot:
 			group.append(hide.comp.PropsEditor.makePropsList([
@@ -405,9 +431,17 @@ class Light extends Object3D {
 			]));
 		default:
 		}
+		if ( cascade )
+			group.append(hide.comp.PropsEditor.makePropsList([
+				{ name: "cascadeNbr", t: PInt(1, 5), def: 1},
+				{ name: "cascadePow", t: PFloat(0, 4), def: 2},
+				{ name: "firstCascadeSize", t: PFloat(0, 1), def: 0.2},
+				{ name: "castingMaxDist", t: PFloat(0, 100), def: 0.0},
+				{ name: "debugShader", t: PBool, def: false},
+			]));
 
 		var props = ctx.properties.add(group, this, function(pname) {
-			if( pname == "kind"){
+			if( pname == "kind" || pname == "cascade" || pname == "autoShrink" ){
 				ctx.rebuildPrefab(this);
 				ctx.rebuildProperties();
 			}
