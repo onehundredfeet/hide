@@ -28,9 +28,12 @@ class Model extends FileView {
 	var rootPath : String;
 	var root : hrt.prefab.Prefab;
 	var selectedAxes : h3d.scene.Object;
+	var lastSelectedObject : h3d.scene.Object = null;
+
+	var highlightSelection : Bool = true;
 
 	var viewModes : Array<String>;
-	
+
 	override function save() {
 		if(!modified) return;
 		// Save current Anim data
@@ -147,6 +150,10 @@ class Model extends FileView {
 		sceneEditor.editorDisplay = false;
 		sceneEditor.onRefresh = onRefresh;
 		sceneEditor.onUpdate = update;
+		sceneEditor.onSelectionChanged = function(elts : Array<hrt.prefab.Prefab>, ?mode : hide.comp.SceneEditor.SelectMode = Default) {
+			if (tree != null) tree.setSelection([]);
+			refreshSelectionHighlight(null);
+		}
 		sceneEditor.view.keys = new hide.ui.Keys(null); // Remove SceneEditor Shortcuts
 		sceneEditor.view.keys.register("save", function() {
 			save();
@@ -157,6 +164,8 @@ class Model extends FileView {
 		element.find(".hide-scene-tree").first().append(sceneEditor.tree.element);
 		element.find(".props").first().append(sceneEditor.properties.element);
 		element.find(".heaps-scene").first().append(sceneEditor.scene.element);
+		sceneEditor.view.keys.register("sceneeditor.focus", {name: "Focus Selection", category: "Scene"},
+			function() {if (lastSelectedObject != null) refreshSelectionHighlight(lastSelectedObject);});
 		sceneEditor.tree.element.addClass("small");
 
 		element.find("input[value=Export]").click(function(_) {
@@ -178,6 +187,8 @@ class Model extends FileView {
 
 	var def = false;
 	function selectMaterial( m : h3d.mat.Material ) {
+		refreshSelectionHighlight(null);
+
 		var properties = sceneEditor.properties;
 		properties.clear();
 
@@ -202,30 +213,7 @@ class Model extends FileView {
 		<br/>
 		');
 
-		var materials : Array<{path:String, mat:hrt.prefab.Material}> = [];
-		var parts = getPath().split("/");
-		var dirs = [];
-		for ( p in parts ) {
-			if ( dirs.length != 0 ) {
-				dirs.push(dirs[dirs.length-1] + "/" + p);
-			} else {
-				dirs.push(p);
-			}
-		}
-		var baseDir = hxd.impl.Api.downcast(hxd.res.Loader.currentInstance.fs, hxd.fs.LocalFileSystem).baseDir;
-		for ( d in dirs ) {
-			try {
-				var path = d + "/materialLibrary.prefab";
-				path = path.split(baseDir)[1];
-				var prefab = hxd.res.Loader.currentInstance.load(path).toPrefab().load();
-				var mats = prefab.getAll(hrt.prefab.Material);
-				for ( m in mats ) {
-					materials.push( { path : path, mat : m } );
-				}
-			} catch(e: Dynamic) {
-			}
-		}
-		materials.sort((m1, m2) -> { return (m1.mat.name > m2.mat.name ? 1 : -1); });
+		var materials = scene.listMaterialFromLibraries(getPath());
 
 		var selected = null;
 		var props : Dynamic =  h3d.mat.MaterialSetup.current.loadMaterialProps(m);
@@ -250,7 +238,7 @@ class Model extends FileView {
 			</div>
 			<br/>
 		');
-		
+
 		function findMat(key:String) {
 			var p = key.split("/");
 			var name = p.pop();
@@ -282,6 +270,19 @@ class Model extends FileView {
 				ide.openFile(mat.path);
 			}
 		});
+		var lib = @:privateAccess scene.loadHMD(this.getPath(),false);
+		var hmd = lib.header;
+		var defaultProps = null;
+		for ( mat in hmd.materials ) {
+			if ( mat.name == m.name ) {
+				var material = h3d.mat.MaterialSetup.current.createMaterial();
+				material.name = mat.name;
+				material.model = lib.resource;
+				material.blendMode = mat.blendMode;
+				defaultProps = material.getDefaultModelProps();
+				break;
+			}
+		}
 		matLibrary.find(".save").click(function(_) {
 			var mat = findMat(matLibrary.find(".matLib").val());
 			if ( mat != null ) {
@@ -291,7 +292,7 @@ class Model extends FileView {
 				Reflect.deleteField((m.props:Dynamic), "__ref");
 				Reflect.deleteField((m.props:Dynamic), "name");
 			}
-			h3d.mat.MaterialSetup.current.saveMaterialProps(m);
+			h3d.mat.MaterialSetup.current.saveMaterialProps(m, defaultProps);
 		});
 		properties.add(matLibrary, m);
 
@@ -307,7 +308,7 @@ class Model extends FileView {
 			undo.change(Field(m, "props", old), selectMaterial.bind(m));
 		});
 		e.find(".save").click(function(_) {
-			h3d.mat.MaterialSetup.current.saveMaterialProps(m);
+			h3d.mat.MaterialSetup.current.saveMaterialProps(m, defaultProps);
 		});
 	}
 
@@ -353,6 +354,16 @@ class Model extends FileView {
 			materialDraws += count;
 		}
 
+		function roundVec(vec: Dynamic) : Any {
+			var scale = 1000;
+			vec.x = hxd.Math.round(vec.x * scale) / scale;
+			vec.y = hxd.Math.round(vec.y * scale) / scale;
+			vec.z = hxd.Math.round(vec.z * scale) / scale;
+			return vec;
+		}
+
+		var transform = obj.defaultTransform;
+
 		var e = properties.add(new Element('
 			<div class="group" name="Properties">
 				<dl>
@@ -371,7 +382,45 @@ class Model extends FileView {
 					<dt>Bones</dt><dd>$bonesCount</dd>
 					<dt>Vertexes</dt><dd>$vertexCount</dd>
 					<dt>Triangles</dt><dd>$triangleCount</dd>
-				</dl>
+					' + if (transform != null) {
+						var bounds = obj.getBounds();
+						var size : h3d.col.Point = roundVec(obj.getBounds().getSize());
+
+						size.x = hxd.Math.max(0, size.x);
+						size.y = hxd.Math.max(0, size.y);
+						size.z = hxd.Math.max(0, size.z);
+
+						var mesh = Std.downcast(obj, h3d.scene.Mesh);
+						var meshSize : h3d.col.Point = null;
+						if (mesh != null) {
+							var bounds = mesh.primitive.getBounds().clone();
+							bounds.transform(obj.getAbsPos());
+							meshSize = bounds.getSize();
+
+							roundVec(meshSize);
+							meshSize.x = hxd.Math.max(0, meshSize.x);
+							meshSize.y = hxd.Math.max(0, meshSize.y);
+							meshSize.z = hxd.Math.max(0, meshSize.z);
+
+						}
+
+						var pos = transform.getPosition();
+						roundVec(pos);
+						var rot = transform.getEulerAngles();
+						rot.x = hxd.Math.radToDeg(rot.x);
+						rot.y = hxd.Math.radToDeg(rot.y);
+						rot.z = hxd.Math.radToDeg(rot.z);
+						rot = roundVec(rot);
+
+						var scale : h3d.Vector = roundVec(transform.getScale());
+
+						'<dt>Local Pos</dt><dd>X: ${pos.x}, Y: ${pos.y}, Z: ${pos.z}</dd>
+						<dt>Local Rot</dt><dd>X: ${rot.x}°, Y: ${rot.y}°, Z: ${rot.z}°</dd>
+						<dt>Local Scale</dt><dd>X: ${scale.x}, Y: ${scale.y}, Z: ${scale.z}</dd>
+						<dt>Total Size</dt><dd>X: ${size.x}, Y: ${size.y}, Z: ${size.z}</dd>
+						${meshSize != null ? '<dt>Mesh Size</dt><dd>X: ${meshSize.x}, Y: ${meshSize.y}, Z: ${meshSize.z}</dd>' : ""}';
+					} else '' +
+				'</dl>
 			</div>
 			<br/>
 		'),obj);
@@ -386,6 +435,48 @@ class Model extends FileView {
 			var name = select.val().split(".").pop();
 			obj.follow = this.obj.getObjectByName(name);
 		});
+
+
+		refreshSelectionHighlight(obj);
+	}
+
+	function refreshSelectionHighlight(selectedObj: h3d.scene.Object) {
+		if (selectedObj == lastSelectedObject && selectedObj != null) {
+			sceneEditor.focusObjects([selectedObj]);
+		}
+		lastSelectedObject = selectedObj;
+		var root = this.obj;
+		if (root == null)
+			return;
+
+		var materials = root.getMaterials();
+
+		for( m in materials ) {
+			m.removePass(m.getPass("highlight"));
+			m.removePass(m.getPass("highlightBack"));
+		}
+
+		if (!highlightSelection || selectedObj == null)
+			return;
+
+		materials = selectedObj.getMaterials();
+
+		var shader = new h3d.shader.FixedColor(0xffffff);
+		var shader2 = new h3d.shader.FixedColor(0xff8000);
+		for( m in materials ) {
+			if( m.name != null && StringTools.startsWith(m.name,"$UI.") )
+				continue;
+			var p = m.allocPass("highlight");
+			p.culling = None;
+			p.depthWrite = false;
+			p.depthTest = LessEqual;
+			p.addShader(shader);
+			var p = m.allocPass("highlightBack");
+			p.culling = None;
+			p.depthWrite = false;
+			p.depthTest = Always;
+			p.addShader(shader2);
+		}
 	}
 
 	function getNamedObjects( ?exclude : h3d.scene.Object ) {
@@ -481,7 +572,6 @@ class Model extends FileView {
 		tree = new hide.comp.SceneTree(obj, overlay, obj.name != null);
 		tree.onSelectMaterial = selectMaterial;
 		tree.onSelectObject = selectObject;
-
 		tree.saveDisplayKey = this.saveDisplayKey;
 
 		tools.clear();
@@ -533,6 +623,11 @@ class Model extends FileView {
 		displayJoints = tools.addToggle("connectdevelop", "Joints",(b) -> {
 			sceneEditor.setJoints(b, selectedJoint);
 		});
+
+		tools.addToggle("square-o", "Show selection Outline",(b) -> {
+			highlightSelection = b;
+			refreshSelectionHighlight(lastSelectedObject);
+		}, highlightSelection);
 
 		tools.addColor("Background color", function(v) {
 			scene.engine.backgroundColor = v;
@@ -634,7 +729,7 @@ class Model extends FileView {
 
 	function initConsole() {
 		var c = new h2d.Console(hxd.res.DefaultFont.get(), scene.s2d);
-		c.addCommand("rotate",[{ name : "speed", t : AFloat }], function(r) {
+		c.addCommand("rotate",[{ name : "speed", t : h2d.Console.ConsoleArg.AFloat }], function(r) {
 			cameraMove = function() {
 				var cam = scene.s3d.camera;
 				var dir = cam.pos.sub(cam.target);

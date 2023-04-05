@@ -56,6 +56,7 @@ class Ide {
 	var hasReloaded = false;
 
 	public var show3DIcons = true;
+	public var show3DIconsCategory : Map<hrt.impl.EditorTools.IconCategory, Bool> = new Map();
 
 	static var firstInit = true;
 
@@ -253,6 +254,8 @@ class Ide {
 			var view = getViewAt(mouseX, mouseY);
 			if(view != null) view.processKeyEvent(e);
 		});
+
+		hrt.impl.EditorTools.setupIconCategories();
 	}
 
 	public function getViews<K,T:hide.ui.View<K>>( cl : Class<T> ) {
@@ -1040,6 +1043,21 @@ class Ide {
 			t();
 	}
 
+	public function filterProps( callb : Dynamic -> Bool ) {
+		var exts = ["props", "json"];
+		var todo = [];
+		browseFiles(function(path) {
+			var ext = path.split(".").pop();
+			if( exts.indexOf(ext) < 0 ) return;
+			var content = parseJSON(sys.io.File.getContent(getPath(path)));
+			var changed = callb(content);
+			if( !changed ) return;
+			todo.push(function() sys.io.File.saveContent(getPath(path), toJSON(content)));
+		});
+		for( t in todo )
+			t();
+	}
+
 	function browseFiles( callb : String -> Void ) {
 		function browseRec(path) {
 			if( path == ".tmp" ) return;
@@ -1178,34 +1196,6 @@ class Ide {
 		db.find(".dbCompress").prop("checked",database.compress).click(function(_) {
 			database.compress = !database.compress;
 			saveDatabase();
-		});
-		db.find(".dbRef").click(function(_) {
-			hide.comp.cdb.DataFiles.load();
-			var csv = "";
-			for( table in getViews(hide.view.CdbTable) ) {
-				var editor = @:privateAccess table.editor;
-				var sheet = table.getSheets().filter((s) -> s.name == editor.getCurrentSheet())[0];
-				if (sheet != null) {
-					for (i in 0...sheet.lines.length) {
-						var id = null;
-						for( c in sheet.columns ) {
-							switch( c.type ) {
-							case TId:
-								id = Reflect.field(sheet.lines[i], c.name);
-								break;
-							default:
-							}
-						}
-						var messages = editor.getReferences(id, true, sheet);
-						csv += id + ',' + messages.length + ',' + messages.join(",") +"\n";
-					}
-				}
-			}
-			if (csv != "") {
-				chooseFileSave("ref.csv", function(f) {
-					if( f != null ) sys.io.File.saveContent(getPath(f), csv);
-				});
-			}
 		});
 		db.find(".dbExport").click(function(_) {
 			hide.comp.cdb.DataFiles.load();

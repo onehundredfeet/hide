@@ -42,6 +42,29 @@ input, textarea {
 	padding-left : 4px;
 }
 
+.custom-text-edit {
+	//padding-left: 2px;
+	max-height: 200px; overflow-y:auto; overflow-x:hidden;
+
+	&:focus {
+		outline: 1px solid #888888;
+		outline-offset: 1px;
+	}
+}
+
+.custom-text-edit-standalone {
+	background-color: rgb(34,34,34);
+	border : 1px solid #444;
+	padding: 2px 4px;
+	&:focus {
+		background-color: rgb(20,20,20);
+	}
+	&:hover {
+		border-color : #888;
+	}
+	.custom-text-edit();
+}
+
 select {
 	&:focus {
 		outline: none;
@@ -648,6 +671,9 @@ input[type=checkbox] {
 
 		.icon {
 			font-size: 14px;
+			&:before {
+				text-shadow: 1px 1px 1px rgba(0,0,0,0.45);
+			}
 		}
 
 		.label {
@@ -657,6 +683,7 @@ input[type=checkbox] {
 			margin-right: 6px;
 			user-select: none;
 		}
+
 
 		&:first-child {
 			border-top-left-radius: 4px;
@@ -680,7 +707,7 @@ input[type=checkbox] {
 
 		&.menu {
 			background: @color-menu-bg;
-
+			min-width: 2px;
 			&:hover {
 				background: @color-menu-bg-highlight;
 			}
@@ -690,8 +717,8 @@ input[type=checkbox] {
 			font-family: FontAwesome;
 			content: "\f107";
 			vertical-align: middle;
+			margin-left: 2px;
 			margin-right: 2px;
-
 		}
 	}
 
@@ -2543,14 +2570,17 @@ div.color-box {
 }
 
 div.popup {
-	background-color : rgb(40, 40, 41);
-	border : 1px solid rgb(51, 51, 51);
+	background-color : #181818;
+	border : 1px solid #242424;
+	border-radius: 5px;
+
+	color: #d8d8d8;
 
 	position: absolute;
 	overflow: visible;
 	z-index: 900;
 
-	box-shadow: 3px 3px 3px rgba(0, 0, 0, 0.777);
+	box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.5);
 
 	&:focus {
 		outline: none;
@@ -2577,11 +2607,21 @@ div.popup {
 	.form-grid {
 		display: grid;
 		grid-template-columns: auto 1fr;
+		align-items: center;
+		
+		input[type="radio"] {
+			margin: 3px;
+		}
 	}
 
 	label {
 		text-align: right;
 		padding-right: 8px;
+	}
+
+	label.left {
+		text-align: left;
+		padding-left: 8px;
 	}
 
 	.hide-grid {

@@ -86,6 +86,7 @@ typedef ObjectAnimation = {
 };
 
 class BaseFX extends hrt.prefab.Library {
+	public static var useAutoPerInstance = #if editor true #else false #end;
 
 	@:s public var duration : Float;
 	@:s public var startDelay : Float;
@@ -168,10 +169,12 @@ class BaseFX extends hrt.prefab.Library {
 		return ret;
 	}
 
-	public static function getShaderAnims(ctx: Context, elt: PrefabElement, anims: Array<ShaderAnimation>) {
+	static var emptyParams : Array<String> = [];
+	public static function getShaderAnims(ctx: Context, elt: PrefabElement, anims: Array<ShaderAnimation>, ?batch: h3d.scene.MeshBatch) {
+		// Init all animations recursively except Emitter ones (called in Emitter)
 		if(Std.downcast(elt, hrt.prefab.fx.Emitter) == null) {
 			for(c in elt.children) {
-				getShaderAnims(ctx, c, anims);
+				getShaderAnims(ctx, c, anims, batch);
 			}
 		}
 
@@ -182,11 +185,31 @@ class BaseFX extends hrt.prefab.Library {
 		for(shCtx in ctx.shared.getContexts(elt)) {
 			if(shCtx.custom == null) continue;
 			var params = makeShaderParams(ctx, shader);
+			var shader : hxsl.Shader = shCtx.custom;
+			/*
+			if(useAutoPerInstance && batch != null)  @:privateAccess {
+				var perInstance = batch.forcedPerInstance;
+				if(perInstance == null) {
+					perInstance = [];
+					batch.forcedPerInstance = perInstance;
+				}
+				perInstance.push({
+					shader: shader.shader.data.name,
+					params: params == null ? emptyParams : params.map(p -> p.def.name)
+				});
+			}*/
+
 			if(params == null) continue;
-			var anim = Std.isOfType(shCtx.custom,hxsl.DynamicShader) ? new ShaderDynAnimation() : new ShaderAnimation();
-			anim.shader = shCtx.custom;
+
+			var anim = Std.isOfType(shader,hxsl.DynamicShader) ? new ShaderDynAnimation() : new ShaderAnimation();
+			anim.shader = shader;
 			anim.params = params;
 			anims.push(anim);
+		}
+
+		if(batch != null) {
+			var shader = Std.downcast(ctx.custom, hxsl.Shader);
+			batch.material.mainPass.addShader(shader);
 		}
 	}
 

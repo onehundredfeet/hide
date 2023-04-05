@@ -158,6 +158,31 @@ private class FXSceneEditor extends hide.comp.SceneEditor {
 		var recents = getNewRecentContextMenu(current, onMake);
 
 		var menu = [];
+
+		function splitMenu(menu : Array<hide.comp.ContextMenu.ContextMenuItem>, name : String, entries : Array<hide.comp.ContextMenu.ContextMenuItem>, len : Int = 30) {
+			entries.sort((a,b) -> Reflect.compare(a.label, b.label));
+
+			var pos = 0;
+			while(true) {
+				var arr = entries.slice(pos, pos+len);
+				if (arr.length == 0) {
+					break;
+				}
+				pos += len;
+				var firstChar = arr[0].label.charAt(0);
+				var endChar = (entries.length < pos+len) ? "Z" : arr[arr.length-1].label.charAt(0);
+
+				var label = name + " " + firstChar + "-" + endChar;
+				if (pos == 0 && arr.length < len) {
+					label = name;
+				}
+				menu.push({
+					label: label,
+					menu: arr
+				});
+			}
+		}
+
 		if (parent.is2D) {
 			for(name in ["Group 2D", "Bitmap", "Anim2D", "Atlas", "Particle2D", "Text", "Shader", "Shader Graph", "Placeholder"]) {
 				var item = allTypes.find(i -> i.label == name);
@@ -218,10 +243,10 @@ private class FXSceneEditor extends hide.comp.SceneEditor {
 		}
 
 		menu.push({label: null, isSeparator: true});
-		menu.push({
-			label: "Other",
-			menu: allTypes
-		});
+		
+		splitMenu(menu, "Other", allTypes);
+
+
 		menu.unshift({
 			label : "Recents",
 			menu : recents,
@@ -600,46 +625,8 @@ class FXEditor extends FileView {
 
 		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
 
-		toolsDefs.push({id: "translationMode", title : "Gizmo translation Mode", icon : "arrows", type : Button(@:privateAccess sceneEditor.gizmo.translationMode), rightClick: () -> {
-			var items = [{
-				label : "Snap to Grid",
-				click : function() {
-					@:privateAccess sceneEditor.gizmo.snapToGrid = !sceneEditor.gizmo.snapToGrid;
-				},
-				checked: @:privateAccess sceneEditor.gizmo.snapToGrid
-			}];
-			var steps : Array<Float> = sceneEditor.view.config.get("sceneeditor.gridSnapSteps");
-			for (step in steps) {
-				items.push({
-					label : ""+step,
-					click : function() {
-						@:privateAccess sceneEditor.gizmo.moveStep = step;
-					},
-					checked: @:privateAccess sceneEditor.gizmo.moveStep == step
-				});
-			}
-			new hide.comp.ContextMenu(items);
-		}});
-		toolsDefs.push({id: "rotationMode", title : "Gizmo rotation Mode", icon : "refresh", type : Button(@:privateAccess sceneEditor.gizmo.rotationMode),  rightClick: () -> {
-			var steps : Array<Float> = sceneEditor.view.config.get("sceneeditor.rotateStepCoarses");
-			var items = [{
-				label : "Snap enabled",
-				click : function() {
-					@:privateAccess sceneEditor.gizmo.rotateSnap = !sceneEditor.gizmo.rotateSnap;
-				},
-				checked: @:privateAccess sceneEditor.gizmo.rotateSnap
-			}];
-			for (step in steps) {
-				items.push({
-					label : ""+step+"°",
-					click : function() {
-						@:privateAccess sceneEditor.gizmo.rotateStepCoarse = step;
-					},
-					checked: @:privateAccess sceneEditor.gizmo.rotateStepCoarse == step
-				});
-			}
-			new hide.comp.ContextMenu(items);
-		}});
+		toolsDefs.push({id: "translationMode", title : "Gizmo translation Mode", icon : "arrows", type : Button(@:privateAccess sceneEditor.gizmo.translationMode)});
+		toolsDefs.push({id: "rotationMode", title : "Gizmo rotation Mode", icon : "refresh", type : Button(@:privateAccess sceneEditor.gizmo.rotationMode)});
 		toolsDefs.push({id: "scalingMode", title : "Gizmo scaling Mode", icon : "expand", type : Button(@:privateAccess sceneEditor.gizmo.scalingMode)});
 
 		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
@@ -787,9 +774,6 @@ class FXEditor extends FileView {
 			scene.engine.backgroundColor = v;
 			updateGrid();
 		}, scene.engine.backgroundColor);
-		tools.addToggle("refresh", "Auto synchronize", function(b) {
-			autoSync = b;
-		});
 
 		tools.addSeparator();
 
@@ -845,7 +829,7 @@ class FXEditor extends FileView {
 		tools.addSeparator();
 
 
-		pauseButton = tools.addToggle("play", "Pause animation", function(v) {}, false, "pause");
+		pauseButton = tools.addToggle("pause", "Pause animation", function(v) {}, false, "play");
 		tools.addRange("Speed", function(v) {
 			scene.speed = v;
 		}, scene.speed);
@@ -1745,7 +1729,7 @@ class FXEditor extends FileView {
 		if(shaderElt != null) {
 			var shader = shaderElt.makeShader();
 			var inEmitter = shaderElt.getParent(hrt.prefab.fx.Emitter) != null;
-			var params = shader == null ? [] : @:privateAccess shader.shader.data.vars.filter(inEmitter ? isPerInstance : v -> v.kind == Param);
+			var params = shader == null ? [] : @:privateAccess shader.shader.data.vars.filter(v -> v.kind == Param);
 			for(param in params) {
 				var item : hide.comp.ContextMenu.ContextMenuItem = switch(param.type) {
 					case TVec(n, VFloat):

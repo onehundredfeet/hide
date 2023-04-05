@@ -3,6 +3,14 @@ package hide.comp.cdb;
 import hxd.Key in K;
 using hide.tools.Extensions;
 
+enum PathPart {
+	Id(idCol:String, name:String, ?targetCol: String);
+	Prop(name: String);
+	Line(lineNo:Int, ?targetCol: String);
+	Script(lineNo:Int);
+}
+
+typedef Path = Array<PathPart>;
 
 enum Direction {
 	Left;
@@ -45,6 +53,7 @@ class Editor extends Component {
 	var tables : Array<Table> = [];
 	var searchBox : Element;
 	var searchHidden : Bool = true;
+	var pendingSearchRefresh : haxe.Timer = null;
 	var displayMode : Table.DisplayMode;
 	var clipboard : {
 		text : String,
@@ -196,7 +205,26 @@ class Editor extends Component {
 		case K.ESCAPE:
 			if( currentFilters.length > 0 ) {
 				searchFilter([]);
+				// Auto expand separators if they were hidden
+				// Also : Very cursed code
+				var line = cursor.getLine();
+				if (line != null) {
+					var sep = line.element.prevAll(".separator").first();
+					while (sep.length > 0) {
+						trace(sep.get(0).classList);
+						if (sep.hasClass("sep-hidden")) {
+							sep.find("a").click();
+						}
+						if (Std.parseInt(sep.attr("level")) > 0) {
+							sep = sep.prevAll(".separator").first();
+						}
+						else {
+							break;
+						}
+					}
+				}
 			}
+
 			searchBox.hide();
 			refresh();
 		}
@@ -359,6 +387,50 @@ class Editor extends Component {
 		return null;
 	}
 
+	/* Change the id of a cell, propagating the changes to all the references in the database
+	*/
+	function changeID(obj : Dynamic, newValue : Dynamic, column : cdb.Data.Column, table : Table) {
+		if (column.type != TId)
+			throw "Target column is not an ID";
+		var value = Reflect.getProperty(obj, column.name);
+		var prevValue = value;
+		var realSheet = table.getRealSheet();
+		var isLocal = realSheet.idCol.scope != null;
+		var parentID = isLocal ? table.makeId([],realSheet.idCol.scope,null) : null;
+		// most likely our obj, unless there was a #DUP
+		var prevObj = value != null ? realSheet.index.get(isLocal ? parentID+":"+value : value) : null;
+		// have we already an obj mapped to the same id ?
+		var prevTarget = realSheet.index.get(isLocal ? parentID+":"+newValue : newValue);
+
+		{
+			beginChanges();
+			if( prevObj == null || prevObj.obj == obj ) {
+				// remap
+				var m = new Map();
+				m.set(value, newValue);
+				if( isLocal ) {
+					var scope = table.getScope();
+					var parent = scope[scope.length - realSheet.idCol.scope];
+					base.updateLocalRefs(realSheet, m, parent.obj, parent.s);
+				} else
+					base.updateRefs(realSheet, m);
+			}
+			Reflect.setField(obj, column.name, newValue);
+			endChanges();
+			refreshRefs();
+
+			// Refresh display of all ids in the column manually
+			var colId = table.sheet.columns.indexOf(column);
+			for (l in table.lines) {
+				if (l.cells[colId] != null)
+					l.cells[colId].refresh(false);
+			}
+		}
+
+		if( prevTarget != null || (prevObj != null && (prevObj.obj != obj || table.sheet.index.get(prevValue) != null)) )
+			table.refresh();
+	}
+
 	function onPaste() {
 		var text = ide.getClipboard();
 		var columns = cursor.table.columns;
@@ -425,8 +497,6 @@ class Editor extends Component {
 				beginChanges();
 				var obj = line.obj;
 				formulas.removeFromValue(obj, col);
-				if (col.type == TId)
-					value = ensureUniqueId(value, cursor.table, col);
 				Reflect.setField(obj, col.name, value);
 			} else {
 				beginChanges();
@@ -442,8 +512,6 @@ class Editor extends Component {
 						if( value == null ) continue;
 						var obj = sheet.lines[y];
 						formulas.removeFromValue(obj, col);
-						if (col.type == TId)
-							value = ensureUniqueId(value, cursor.table, col);
 						Reflect.setField(obj, col.name, value);
 						toRefresh.push(allLines[y].cells[x]);
 					}
@@ -482,6 +550,10 @@ class Editor extends Component {
 
 			if (destCol.type == TId) {
 				v = ensureUniqueId(v, cursor.table, destCol);
+				if (v != null) {
+					changeID(destObj, v, destCol, cursor.table);
+				}
+				return;
 			}
 			if( v == null )
 				Reflect.deleteField(destObj, destCol.name);
@@ -573,7 +645,7 @@ class Editor extends Component {
 		if( id != null && id.length > 0) {
 			var refs = getReferences(id, sheet);
 			if( refs.length > 0 ) {
-				var message = refs.join("\n");
+				var message = [for (r in refs) r.str].join("\n");
 				if( !ide.confirm('$id is referenced elswhere. Are you sure you want to delete?\n$message') )
 					return;
 			}
@@ -871,95 +943,277 @@ class Editor extends Component {
 		}
 		return id;
 	}
-	public function getReferences(id: String, withCodePaths = true, sheet: cdb.Sheet) {
+	public function getReferences(id: String, withCodePaths = true, returnAtFirstRef = false, sheet: cdb.Sheet, ?codeFileCache: Array<{path: String, data:String}>, ?prefabFileCache: Array<{path: String, data:String}>) : Array<{str:String, ?goto:Void->Void}> {
 		if( id == null )
 			return [];
 
+		function splitPath(rs: {s:Array<{s:cdb.Sheet, c:String, id:Null<String>}>, o:{path:Array<Dynamic>, indexes:Array<Int>}}) {
+			var path = [];
+			var coords = [];
+			for( i in 0...rs.s.length ) {
+				var s = rs.s[i];
+				var oid = Reflect.field(rs.o.path[i], s.id);
+				var idx = rs.o.indexes[i];
+				if( oid == null || oid == "" )
+					path.push(s.s.name.split("@").pop() + (idx < 0 ? "" : "[" + idx +"]"));
+				else
+					path.push(oid);
+			}
+
+			var coords = [];
+			var curIdx = 0;
+			while(curIdx < rs.o.indexes.length) {
+				var sheet = rs.s[curIdx];
+				var isSheet = !sheet.s.props.isProps;
+				if (isSheet) {
+					var oid = Reflect.field(rs.o.path[curIdx], sheet.id);
+					var next = sheet.c;
+					if (oid != null) {
+						coords.push(Id(sheet.id, oid, next));
+					}
+					else {
+						coords.push(Line(rs.o.indexes[curIdx], next));
+					}
+				}
+				else {
+					coords.push(Prop(rs.s[curIdx].c));
+				}
+
+				curIdx += 1;
+			}
+
+			return {pathNames: path, pathParts: coords};
+		}
+
 		var results = sheet.getReferencesFromId(id);
-		var message = [];
+		var message = new Array<{str:String, ?goto:Void->Void}>();
 		if( results != null ) {
 			for( rs in results ) {
-				var path = [];
-				for( i in 0...rs.s.length ) {
-					var s = rs.s[i];
-					var oid = Reflect.field(rs.o.path[i], s.id);
-					var idx = rs.o.indexes[i];
-					if( oid == null || oid == "" )
-						path.push(s.s.name.split("@").pop() + (idx < 0 ? "" : "[" + idx +"]"));
-					else
-						path.push(oid);
-				}
-				path.push(rs.s[rs.s.length-1].c);
-				message.push(rs.s[0].s.name+"  "+path.join("."));
+				var path = splitPath(rs);
+				message.push({str: rs.s[0].s.name+"."+path.pathNames.join("."), goto: () -> openReference2(rs.s[0].s, path.pathParts)});
+				if (returnAtFirstRef) return message;
 			}
 		}
 		if (withCodePaths) {
 			var paths : Array<String> = this.config.get("haxe.classPath");
 			if( paths != null ) {
+
+
+				if (codeFileCache == null) {
+					codeFileCache = [];
+				}
+
+				if (codeFileCache.length == 0) {
+					function lookupRec(p) {
+						for( f in sys.FileSystem.readDirectory(p) ) {
+							var fpath = p+"/"+f;
+							if( sys.FileSystem.isDirectory(fpath) ) {
+								lookupRec(fpath);
+								if (returnAtFirstRef && message.length > 0) return;
+								continue;
+							}
+							if( StringTools.endsWith(f, ".hx") ) {
+								codeFileCache.push({path: fpath, data: sys.io.File.getContent(fpath)});
+							}
+						}
+					}
+
+					for( p in paths ) {
+						var path = ide.getPath(p);
+						if( sys.FileSystem.exists(path) && sys.FileSystem.isDirectory(path) )
+							lookupRec(path);
+					}
+				}
+
 				var spaces = "[ \\n\\t]";
 				var prevChars = ",\\(:=\\?\\[";
 				var postChars = ",\\):;\\?\\]&|";
 				var regexp = new EReg('((case$spaces+)|[$prevChars])$spaces*$id$spaces*[$postChars]',"");
 				var regall = new EReg("\\b"+id+"\\b", "");
-				function lookupRec(p) {
-					for( f in sys.FileSystem.readDirectory(p) ) {
-						var fpath = p+"/"+f;
-						if( sys.FileSystem.isDirectory(fpath) ) {
-							lookupRec(fpath);
-							continue;
-						}
-						if( StringTools.endsWith(f, ".hx") ) {
-							var content = sys.io.File.getContent(fpath);
-							if( content.indexOf(id) < 0 ) continue;
-							for( line => str in content.split("\n") ) {
-								if( regall.match(str) ) {
-									if( !regexp.match(str) ) {
-										var str2 = str.split(id+".").join("").split("."+id).join("").split(id+"(").join("").split(id+"<").join("");
-										if( regall.match(str2) ) trace("Skip "+str);
-										continue;
-									}
-									var rel = ide.makeRelative(fpath);
-									message.push(rel+":"+(line+1));
-								}
+				for (file in codeFileCache) {
+
+					var fpath = file.path;
+					var content = file.data;
+					if( content.indexOf(id) < 0 ) continue;
+					for( line => str in content.split("\n") ) {
+						if( regall.match(str) ) {
+							if( !regexp.match(str) ) {
+								var str2 = str.split(id+".").join("").split("."+id).join("").split(id+"(").join("").split(id+"<").join("");
+								if( regall.match(str2) ) trace("Skip "+str);
+								continue;
 							}
+							var path = ide.makeRelative(fpath);
+							var fn = function () {
+								var ext = @:privateAccess hide.view.FileTree.getExtension(path);
+
+								ide.open(ext.component, { path : path }, function (v) {
+									var scr : hide.view.Script = cast v;
+
+									function checkSetPos() {
+										var s = @:privateAccess scr.script;
+										if (s != null) {
+											var e = @:privateAccess s.editor;
+											e.setPosition({column:0, lineNumber: line+1});
+											haxe.Timer.delay(() ->e.revealLineInCenter(line+1), 1);
+											return;
+										}
+
+										// needed because the editor can be created after our
+										// function is called (if the tab was created but never opened,
+										// likely because hide was closed and reopened)
+										// see : View.rebuild()
+										haxe.Timer.delay(checkSetPos, 200);
+									}
+
+									checkSetPos();
+								});
+							}
+							message.push({str: path+":"+(line+1), goto: fn});
+							if (returnAtFirstRef) return message;
 						}
 					}
-				}
-				for( p in paths ) {
-					var path = ide.getPath(p);
-					if( sys.FileSystem.exists(path) && sys.FileSystem.isDirectory(path) )
-						lookupRec(path);
 				}
 			}
 			var paths : Array<String> = this.config.get("cdb.prefabsSearchPaths");
+			var scriptStr = new EReg("\\b"+sheet.name.charAt(0).toUpperCase() + sheet.name.substr(1) + "\\." + id + "\\b","");
+
 			if( paths != null ) {
-				var scriptStr = new EReg("\\b"+sheet.name.charAt(0).toUpperCase() + sheet.name.substr(1) + "\\." + id + "\\b","");
-				function lookupPrefabRec(path) {
-					for( f in sys.FileSystem.readDirectory(path) ) {
-						var fpath = path+"/"+f;
-						if( sys.FileSystem.isDirectory(fpath) ) {
-							lookupPrefabRec(fpath);
-							continue;
-						}
-						var ext = f.split(".").pop();
-						if( @:privateAccess hrt.prefab.Library.registeredExtensions.exists(ext) ) {
-							var content = sys.io.File.getContent(fpath);
-							if( !scriptStr.match(content) ) continue;
-							for( line => str in content.split("\n") ) {
-								if( scriptStr.match(str) )
-									message.push(ide.makeRelative(fpath)+":"+(line+1));
+
+				if (prefabFileCache == null)
+					prefabFileCache = [];
+
+				if (prefabFileCache.length == 0) {
+					function lookupPrefabRec(path) {
+						for( f in sys.FileSystem.readDirectory(path) ) {
+							var fpath = path+"/"+f;
+							if( sys.FileSystem.isDirectory(fpath) ) {
+								lookupPrefabRec(fpath);
+								continue;
+							}
+							var ext = f.split(".").pop();
+							if( @:privateAccess hrt.prefab.Library.registeredExtensions.exists(ext) ) {
+								prefabFileCache.push({path: fpath, data: sys.io.File.getContent(fpath)});
 							}
 						}
 					}
+					for( p in paths ) {
+						var path = ide.getPath(p);
+						if( sys.FileSystem.exists(path) && sys.FileSystem.isDirectory(path) )
+							lookupPrefabRec(path);
+					}
 				}
-				for( p in paths ) {
-					var path = ide.getPath(p);
-					if( sys.FileSystem.exists(path) && sys.FileSystem.isDirectory(path) )
-						lookupPrefabRec(path);
+
+				for (file in prefabFileCache) {
+					var fpath = file.path;
+					var content = file.data;
+					if( !scriptStr.match(content) ) continue;
+					for( line => str in content.split("\n") ) {
+						if( scriptStr.match(str) ) {
+							var path = ide.makeRelative(fpath);
+							var fn = function () {
+								ide.openFile(path, function (v) {
+									var scr : hide.view.Script = cast v;
+									haxe.Timer.delay(function() {
+										@:privateAccess scr.script.editor.setPosition({column:0, lineNumber: line+1});
+										haxe.Timer.delay(() ->@:privateAccess scr.script.editor.revealLineInCenter(line+1), 1);
+									}, 1);
+								});
+							}
+							message.push({str: path+":"+(line+1), goto: fn});
+						}
+					}
+				}
+			}
+
+			// Script references
+			{
+
+				var results = [];
+				for( s in sheet.base.sheets ) {
+					for( cid => c in s.columns )
+						switch( c.type ) {
+						case TString:
+							if (c.kind == cdb.Data.ColumnKind.Script) {
+								var sheets = [];
+								var p = { s : s, c : c.name, id : null };
+								while( true ) {
+									for( c in p.s.columns )
+										switch( c.type ) {
+										case TId: p.id = c.name; break;
+										default:
+										}
+									sheets.unshift(p);
+									var p2 = p.s.getParent();
+									if( p2 == null ) break;
+									p = { s : p2.s, c : p2.c, id : null };
+								}
+								var objs = s.getObjects();
+								var i = 0;
+								for( sheetline => o in objs ) {
+									i += 1;
+									var obj = o.path[o.path.length - 1];
+									var content = Reflect.field(obj, c.name);
+									if( !scriptStr.match(content) ) continue;
+									for( line => str in content.split("\n") ) {
+										if( scriptStr.match(str) )
+										{
+											var res = splitPath({s: sheets, o: o});
+											res.pathParts.push(Script(line));
+											message.push({str: sheets[0].s.name+"."+res.pathNames.join(".") + "." + c.name + ":" + Std.string(line + 1), goto: () -> openReference2(sheets[0].s, res.pathParts)});
+											if (returnAtFirstRef) return message;
+										}
+									}
+								}
+							}
+
+						/*case TRef(sname) if( sname == sheet.sheet.name ):
+							var sheets = [];
+							var p = { s : s, c : c.name, id : null };
+							while( true ) {
+								for( c in p.s.columns )
+									switch( c.type ) {
+									case TId: p.id = c.name; break;
+									default:
+									}
+								sheets.unshift(p);
+								var p2 = p.s.getParent();
+								if( p2 == null ) break;
+								p = { s : p2.s, c : p2.c, id : null };
+							}
+							for( o in s.getObjects() ) {
+								var obj = o.path[o.path.length - 1];
+								if( Reflect.field(obj, c.name) == id )
+									results.push({ s : sheets, o : o });
+							}*/
+						default:
+						}
 				}
 			}
 		}
 		return message;
+	}
+
+	public function findUnreferenced(col: cdb.Data.Column, table: Table) {
+		var sheet = table.getRealSheet();
+
+		var nonrefs = new Array<{str:String, ?goto:Void->Void}>();
+
+		var codeFileCache = [];
+		var prefabFileCache = [];
+		for (o in sheet.lines) {
+			var id = Reflect.getProperty(o, col.name);
+			var refs = getReferences(id, true, true, sheet, codeFileCache, prefabFileCache);
+			if (refs.length == 0) {
+				nonrefs.push({str: id, goto: () -> openReference2(sheet, [Id(col.name, id)])});
+			}
+		}
+		trace("codeFileCache: ", codeFileCache.length);
+		trace("prefabFileCache: ", prefabFileCache.length);
+
+		ide.open("hide.view.RefViewer", null, function(view) {
+			var refViewer : hide.view.RefViewer = cast view;
+			refViewer.showRefs(nonrefs, "Number of unreferenced ids");
+		});
 	}
 
 	public function showReferences(?id: String, ?sheet: cdb.Sheet) {
@@ -976,14 +1230,17 @@ class Editor extends Component {
 				default:
 			}
 		}
-		var message = [];
+		var refs = [];
 		if( id != null )
-			message = getReferences(id, sheet);
-		if( message.length == 0 ) {
+			refs = getReferences(id, sheet);
+		if( refs.length == 0 ) {
 			ide.message("No reference found");
 			return;
 		}
-		ide.message(message.join("\n"));
+		ide.open("hide.view.RefViewer", null, function(view) {
+			var refViewer : hide.view.RefViewer = cast view;
+			refViewer.showRefs(refs);
+		});
 	}
 
 	function gotoReference( c : Cell ) {
@@ -1000,8 +1257,12 @@ class Editor extends Component {
 		}
 	}
 
-	function openReference( s : cdb.Sheet, line : Int, column : Int ) {
-		ide.open("hide.view.CdbTable", {}, function(view) Std.downcast(view,hide.view.CdbTable).goto(s,line,column));
+	function openReference2(rootSheet : cdb.Sheet, path: Path) {
+		ide.open("hide.view.CdbTable", {}, function(view) Std.downcast(view,hide.view.CdbTable).goto2(rootSheet,path));
+	}
+
+	function openReference( s : cdb.Sheet, line : Int, column : Int, ?scriptLine: Int ) {
+		ide.open("hide.view.CdbTable", {}, function(view) Std.downcast(view,hide.view.CdbTable).goto(s,line,column,scriptLine));
 	}
 
 	public function syncSheet( ?base, ?name ) {
@@ -1063,6 +1324,8 @@ class Editor extends Component {
 		function addSearchInput() {
 			var index = filters.length;
 			filters.push("");
+
+
 			new Element("<input type='text'>").appendTo(inputCont).keydown(function(e) {
 				if( e.keyCode == 27 ) {
 					searchBox.find("i.close-search").click();
@@ -1073,7 +1336,21 @@ class Editor extends Component {
 				}
 			}).keyup(function(e) {
 				filters[index] = e.getThis().val();
-				searchFilter(filters.copy());
+
+				// Slow table refresh protection
+				if (currentSheet.lines.length > 300) {
+					if (pendingSearchRefresh != null) {
+						pendingSearchRefresh.stop();
+					}
+					pendingSearchRefresh = haxe.Timer.delay(function()
+						{
+							searchFilter(filters.copy());
+							pendingSearchRefresh = null;
+						}, 500);
+				}
+				else {
+					searchFilter(filters.copy());
+				}
 			});
 			inputCol.find(".remove-btn").toggleClass("hidden", filters.length <= 1);
 		}
@@ -1284,31 +1561,34 @@ class Editor extends Component {
 
 		var scope = table.getScope();
 
-		if (currentValue != null) {
-			var newId : String;
-			var idWithScope : String;
-			do {
-				currentValue+=1;
-				var valStr = Std.string(currentValue);
+        if (currentValue == null) {
+            currentValue = 0;
+            strIdx = 0;
+        }
 
-				// Pad with zeroes
-				for (i in 0...strIdx - valStr.length) {
-					valStr = "0" + valStr;
-				}
-				newId = str.substr(0, -strIdx) + valStr;
-				idWithScope = if(column.scope != null)  table.makeId(scope, column.scope, newId) else newId;
-			}
-			while (!isUniqueID(table.getRealSheet(), {}, idWithScope));
 
-			return newId;
-		}
-		return "";
+        var newId : String;
+        var idWithScope : String;
+        do {
+            currentValue+=1;
+            var valStr = Std.string(currentValue);
+
+            // Pad with zeroes
+            for (i in 0...strIdx - valStr.length) {
+                valStr = "0" + valStr;
+            }
+            newId = str.substr(0, str.length-strIdx) + valStr;
+            idWithScope = if(column.scope != null)  table.makeId(scope, column.scope, newId) else newId;
+        }
+        while (!isUniqueID(table.getRealSheet(), {}, idWithScope));
+
+        return newId;
 	}
 
 	public function duplicateLine( table : Table, index = 0 ) {
 		if( !table.canInsert() || table.displayMode != Table )
 			return;
-		var srcObj = table.sheet.getLines()[index];
+		var srcObj = table.sheet.lines[index];
 		beginChanges();
 		var obj = table.sheet.newLine(index);
 		for(colId => c in table.columns ) {
@@ -1494,11 +1774,14 @@ class Editor extends Component {
 	function moveLines(lines : Array<Line>, delta : Int) {
 		if( lines.length == 0 || !lines[0].table.canInsert() || delta == 0 )
 			return;
+		var selDiff: Null<Int> = cursor.select == null ? null : cursor.select.y - cursor.y;
 		beginChanges();
 		lines.sort((a, b) -> { return (a.index - b.index) * delta * -1; });
 		for( l in lines ) {
 			moveLine(l, delta);
 		}
+		if (selDiff != null && hxd.Math.iabs(selDiff) == lines.length - 1)
+			cursor.set(cursor.table, cursor.x, cursor.y, {x: cursor.x, y: cursor.y + selDiff});
 		endChanges();
 	}
 
@@ -1605,7 +1888,7 @@ class Editor extends Component {
 				if( id != null && id.length > 0) {
 					var refs = getReferences(id, sheet);
 					if( refs.length > 0 ) {
-						var message = refs.join("\n");
+						var message = [for (r in refs) r.str].join("\n");
 						if( !ide.confirm('$id is referenced elswhere. Are you sure you want to delete?\n$message') )
 							return;
 					}
@@ -1854,4 +2137,3 @@ class Editor extends Component {
 		return names;
 	}
 }
-

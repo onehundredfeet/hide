@@ -4,6 +4,16 @@
 .cdb-view .cdb {
   margin-bottom: 350px;
 }
+.refviewer {
+  line-height: 18px;
+  padding: 4px;
+}
+.refviewer a {
+  cursor: pointer;
+}
+.refviewer a:hover {
+  color: #4772b3;
+}
 .cdb-view.cdb-diff .cdb-sheet th,
 .cdb-view.cdb-diff th.start {
   background-color: #d60;
@@ -130,8 +140,8 @@
   background-color: black;
 }
 .cdb .cdb-sheet td.edit {
-  padding: 2px;
-  padding-right: 6px;
+  /*padding : 2px;
+			padding-right : 6px;*/
 }
 .cdb .cdb-sheet td.edit > input,
 .cdb .cdb-sheet td.edit textarea,
@@ -389,7 +399,7 @@
 }
 .cdb .cdb-sheet td.t_file .preview .previewContent {
   display: none;
-  position: absolute;
+  position: fixed;
   background-color: #333;
   color: white;
   border: 1px solid black;

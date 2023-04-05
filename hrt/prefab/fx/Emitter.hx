@@ -15,6 +15,7 @@ enum AlignMode {
 	None;
 	Screen;
 	Axis;
+    Speed;
 }
 
 enum AlignLockAxis {
@@ -399,7 +400,7 @@ private class ParticleInstance {
 		this.speedAccumulation.load(speedAccumulation);
 
 
-		if(emitter.emitOrientation == Speed && tmpSpeed.lengthSq() > 0.01) {
+		if((emitter.emitOrientation == Speed || emitter.alignMode == Speed) && tmpSpeed.lengthSq() > 0.01) {
 			var qRot = qRot.toQuat();
 			inline qRot.initDirection(tmpSpeed);
 			this.qRot.loadQuat(qRot);
@@ -611,12 +612,10 @@ class EmitterObject extends h3d.scene.Object {
 					if( !shader.enabled ) continue;
 					var shCtx = makeShaderInstance(shader, context);
 					if( shCtx == null ) continue;
-	
+
 					//shCtx.local3d = null; // Prevent shader.iterMaterials from adding our objet to the list incorectly
-	
-					hrt.prefab.fx.BaseFX.getShaderAnims(shCtx, shader, shaderAnims);
-					var shader = Std.downcast(shCtx.custom, hxsl.Shader);
-					batch.material.mainPass.addShader(shader);
+
+					hrt.prefab.fx.BaseFX.getShaderAnims(shCtx, shader, shaderAnims, batch);
 				}
 			}
 
@@ -645,6 +644,15 @@ class EmitterObject extends h3d.scene.Object {
 		randomValues = [for(i in 0...(maxCount * randSlots)) 0];
 		evaluator = new Evaluator(randomValues, randSlots);
 		reset();
+	}
+
+	override function onRemove() {
+		if (subEmitters != null) {
+			for (sub in subEmitters) {
+				sub.remove();
+			}
+		}
+		super.onRemove();
 	}
 
 	public function reset() {
@@ -865,6 +873,8 @@ class EmitterObject extends h3d.scene.Object {
 						tmpQuat.initDirection(tmpDir);
 				}
 
+				onEmit(tmpOffset, tmpQuat);
+
 				if( emitOrientation == Random )
 					tmpQuat.initRotation(hxd.Math.srand(Math.PI), hxd.Math.srand(Math.PI), hxd.Math.srand(Math.PI));
 
@@ -911,6 +921,9 @@ class EmitterObject extends h3d.scene.Object {
 		context.local3d = this;
 		emitCount += count;
 	}
+
+	/** Called every time a particle is emitted. `offset` and `orient` can be modified (local space) **/
+	public dynamic function onEmit(offset: h3d.Vector, orient : h3d.Quat) { }
 
 	// No-alloc version of h3d.Matrix.getEulerAngles()
 	static function getEulerAngles(m: h3d.Matrix) {
@@ -1070,11 +1083,12 @@ class EmitterObject extends h3d.scene.Object {
 					lockAxis.set(0, 0, 1);
 					frontAxis.set(0, 1, 0);
 			}
-
 			var lookAtPos = tmpVec;
 			lookAtPos.load(getScene().camera.pos);
+            lookAtPos.w = 1.0;
+
 			var invParent = parent.getInvPos();
-			lookAtPos.transform(invTransform);
+			lookAtPos.transform(invParent);
 			var deltaVec = new h3d.Vector(lookAtPos.x - x, lookAtPos.y - y, lookAtPos.z - z);
 
 			var invParentQ = tmpQuat;
@@ -1094,6 +1108,7 @@ class EmitterObject extends h3d.scene.Object {
 				tmpQuat.initRotateAxis(1,0,0,-Math.PI/2);
 				screenQuat.multiply(screenQuat, tmpQuat);
 			}
+
 		}
 	}
 
@@ -1270,12 +1285,11 @@ class EmitterObject extends h3d.scene.Object {
 		}
 	}
 
-	override function getBoundsRec( b : h3d.col.Bounds ) {
+	override function addBoundsRec( b : h3d.col.Bounds, relativeTo : h3d.Matrix ) {
 		if( posChanged ) {
 			posChanged = false;
 			calcAbsPos();
 		}
-		return b;
 	}
 }
 
@@ -1451,7 +1465,7 @@ class Emitter extends Object3D {
 		var emitterObj = Std.downcast(ctx.local3d, EmitterObject);
 
 		var randIdx = 0;
-		var template : Object3D = cast children.find( 
+		var template : Object3D = cast children.find(
 			c -> c.enabled &&
 			(c.name == null || c.name.indexOf("collision") == -1) &&
 			c.to(Object3D) != null &&
@@ -1714,7 +1728,7 @@ class Emitter extends Object3D {
 
 		var alignMode : AlignMode = getParamVal("alignMode");
 		switch(alignMode) {
-			case None | Screen:
+			case None | Screen | Speed:
 				removeParam("alignLockAxis");
 			default:
 		}

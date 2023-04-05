@@ -8,6 +8,18 @@
 	margin-bottom: 350px;
 }
 
+.refviewer {
+	a {
+		cursor: pointer;
+
+		&:hover {
+				color: @color-highlight;
+		}
+	}
+	line-height: 18px;
+	padding: 4px;
+}
+
 .cdb-view.cdb-diff {
 	.cdb-sheet th, th.start {
 		background-color: #d60;
@@ -147,8 +159,8 @@
 		}
 
 		td.edit {
-			padding : 2px;
-			padding-right : 6px;
+			/*padding : 2px;
+			padding-right : 6px;*/
 			&> input, textarea, select {
 				width : 100%;
 				padding : 0px 2px;
@@ -437,7 +449,7 @@
 						font-family : monospace;
 					}
 					display : none;
-					position : absolute;
+					position : fixed;
 					background-color : #333;
 					color: white;
 					border : 1px solid black;

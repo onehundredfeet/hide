@@ -193,6 +193,11 @@ class Cell {
 						click : () -> editor.showReferences(this.value),
 						keys : this.editor.config.get("key.cdb.showReferences"),
 					},
+					{
+						label : "Show unreferenced IDs",
+						click : () -> editor.findUnreferenced(this.column, this.table),
+						keys : this.editor.config.get("key.cdb.showUnreferenced"),
+					}
 				];
 		case TRef(sname):
 			if( value != null && value != "" )
@@ -272,7 +277,13 @@ class Cell {
 		if( !html.containsHtml )
 			elementHtml.textContent = html.str;
 		else
-			elementHtml.innerHTML = html.str;
+			elementHtml.innerHTML = "<div style='max-height: 200px; overflow-y:auto; overflow-x:hidden;'>" + html.str + "</div>";
+
+		switch( column.type ) {
+		case TEnum(values):
+			elementHtml.title = getEnumValueDoc(values[value]);
+		default:
+		}
 		blurOff = false;
 
 		updateClasses();
@@ -379,6 +390,7 @@ class Cell {
 	}
 
 	function valueHtml( c : cdb.Data.Column, v : Dynamic, sheet : cdb.Sheet, obj : Dynamic, scope : Array<{ s : cdb.Sheet, obj : Dynamic }> ) : {str: String, containsHtml: Bool} {
+
 		inline function val(s:String) {
 			return {str: Std.string(s), containsHtml:false};
 		}
@@ -460,7 +472,7 @@ class Cell {
 			scope.pop();
 			if( out.length == 0 )
 				return val("");
-			return {str: out.join(", "), containsHtml: isHtml};
+			return {str: out.join(", "), containsHtml: true};
 		case TProperties:
 			var ps = sheet.getSub(c);
 			var out = [];
@@ -477,20 +489,25 @@ class Cell {
 			var t = editor.base.getCustomType(name);
 			var isHtml = false;
 			var a : Array<Dynamic> = v;
-			var cas = t.cases[a[0]];
-			var str = cas.name;
-			if( cas.args.length > 0 ) {
-				str += "(";
-				var out = [];
-				var pos = 1;
-				for( i in 1...a.length ) {
-					var r = valueHtml(cas.args[i-1], a[i], sheet, this, scope);
-					isHtml = isHtml || r.containsHtml;
-					out.push(r.str);
+			var str = "";
+
+			// Temp fix for hack
+			try {
+				var cas = t.cases[a[0]];
+				str = cas.name;
+				if( cas.args.length > 0 ) {
+					str += "(";
+					var out = [];
+					var pos = 1;
+					for( i in 1...a.length ) {
+						var r = valueHtml(cas.args[i-1], a[i], sheet, this, scope);
+						isHtml = isHtml || r.containsHtml;
+						out.push(r.str);
+					}
+					str += out.join(",");
+					str += ")";
 				}
-				str += out.join(",");
-				str += ")";
-			}
+			} catch(e) {};
 			{str: str, containsHtml: isHtml};
 		case TFlags(values):
 			var v : Int = v;
@@ -513,13 +530,13 @@ class Cell {
 			if (v == "") return html('<span class="error">#MISSING</span>');
 			var innerHtml = StringTools.htmlEscape(v);
 			innerHtml = '<span title=\'$innerHtml\' >' + innerHtml  + '</span>';
-			if (!editor.quickExists(path)) return html('<span class="error">$innerHtml</span>');
+			if (!editor.quickExists(path)) return html('<span class="error">#NOTFOUND : $innerHtml</span>');
 			else if( ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" ) {
 				var dims = imageDims.get(url);
 				var dimsText = dims != null ? dims.width+"x"+dims.height : "";
 				var onload = dims != null ? "" : 'onload="hide.comp.cdb.Cell.onImageLoad(this, \'$url\');"';
 				var img = '<img src="$url" $onload/>';
-				var previewHandler = ' onmouseenter="$(this).find(\'.previewContent\').css(\'top\', (this.getBoundingClientRect().bottom - this.offsetHeight) + \'px\')"';
+				var previewHandler = ' onmouseenter="$(this).find(\'.previewContent\').css(\'top\', this.getBoundingClientRect().bottom + \'px\')"';
 				if (getCellConfigValue("inlineImageFiles", false)) {
 					innerHtml = '<span class="preview inlineImage" $previewHandler>
 						<img src="$url"><div class="previewContent"><div class="inlineImagePath">$innerHtml</div><div class="label">$dimsText</div>$img</div>
@@ -727,6 +744,20 @@ class Cell {
 		editor.cursor.set(table, this.columnIndex, this.line.index);
 	}
 
+	function getEnumValueDoc(v: String) {
+		var colDoc = column.documentation == null ? [] : column.documentation.split("\n");
+		var d = colDoc.find(l -> new EReg('\\b$v\\b', '').match(l));
+		if( d != null ) {
+			if( d.indexOf(':') >= 0 )
+				return StringTools.ltrim(d.substr(d.indexOf(':') + 1));
+			else if( d.indexOf('->') >= 0 )
+				return StringTools.ltrim(d.substr(d.indexOf('->') + 2));
+			else if( d.indexOf('=>') >= 0 )
+				return StringTools.ltrim(d.substr(d.indexOf('=>') + 2));
+		}
+		return null;
+	}
+
 	// kept available until we're confident in the new system
 	var useSelect2 = false;
 	public function edit() {
@@ -735,69 +766,42 @@ class Cell {
 		useSelect2 = this.editor.config.get("cdb.useSelect2") || (Std.isOfType(editor, ObjEditor) && editor.element.parent().hasClass("detached"));
 		inEdit = true;
 
-		var colDoc = column.documentation == null ? [] : column.documentation.split("\n");
-		function getEnumValueDoc(v: String) {
-			var d = colDoc.find(l -> new EReg('\\b$v\\b', '').match(l));
-			if( d != null ) {
-				if( d.indexOf(':') >= 0 )
-					return StringTools.ltrim(d.substr(d.indexOf(':') + 1));
-				else if( d.indexOf('->') >= 0 )
-					return StringTools.ltrim(d.substr(d.indexOf('->') + 2));
-				else if( d.indexOf('=>') >= 0 )
-					return StringTools.ltrim(d.substr(d.indexOf('=>') + 2));
-			}
-			return null;
-		}
-
 		switch( column.type ) {
 		case TString if( column.kind == Script ):
 			open();
 		case TFloat2, TFloat3, TFloat4,TInt, TFloat, TString, TId, TCustom(_), TDynamic:		
 			var str = value == null ? "" : Std.isOfType(value, String) ? value : editor.base.valToString(column.type, value);
 
-			var span = js.Browser.document.createSpanElement();
-			span.innerHTML = elementHtml.innerHTML;
-			elementHtml.innerHTML = null;
-			elementHtml.appendChild(span);
-
-			var textWidth = span.offsetWidth;
-			var textHeight = span.offsetHeight;
-			var longText = textHeight > 25 || str.indexOf("\n") >= 0 || str.length > 22;
 			elementHtml.innerHTML = null;
 			elementHtml.classList.add("edit");
-			var i = new Element(longText ? "<textarea>" : "<input>");
+
+
+
+			var i = new Element("<div contenteditable='true' tabindex='1' class='custom-text-edit'>");
+			i[0].innerText = str;
+			var textHeight = i[0].offsetHeight;
+			var longText = textHeight > 25 || str.indexOf("\n") >= 0;
+
 			elementHtml.appendChild(i[0]);
 			i.keypress(function(e) {
-				if (!longText) {
-					longText = i.val().length > 22;
-					if (longText) {
-						var old = currentValue;
-						// hack to tranform the input into textarea
-						var newVal = i.val();
-						var curPos = (cast elementHtml.querySelector("input") : js.html.InputElement).selectionStart;
-						Reflect.setField(line.obj, column.name, newVal+"x");
-						refresh();
-						Reflect.setField(line.obj, column.name,old);
-						currentValue = newVal;
-						edit();
-						(cast elementHtml.querySelector("textArea") : js.html.TextAreaElement).setSelectionRange(curPos, curPos);
-					}
-				}
 				e.stopPropagation();
 			});
 			i.dblclick(function(e) e.stopPropagation());
 			//if( str != "" && (table.displayMode == Properties || table.displayMode == AllProperties) )
 			//	i.css({ width : Math.ceil(textWidth - 3) + "px" }); -- bug if small text ?
-			if( longText ) {
+			/*if( longText ) {
 				elementHtml.classList.add("edit_long");
 				i.css({ height : Math.max(25,Math.ceil(textHeight - 1)) + "px" });
-			}
+			}*/
 			i.val(str);
 			function closeEdit() {
 				i.off();
 				this.closeEdit();
 			}
 			i.keydown(function(e) {
+				var t : js.html.HtmlElement = cast e.target;
+				var textHeight = t.offsetHeight;
+				var longText = textHeight > 25 || t.innerText.indexOf("\n") >= 0;
 				switch( e.keyCode ) {
 				case K.ESCAPE:
 					inEdit = false;
@@ -806,17 +810,6 @@ class Cell {
 					table.editor.element.focus();
 				case K.ENTER if( !e.shiftKey || !column.type.match(TString|TDynamic|TCustom(_)) ):
 					closeEdit();
-					e.preventDefault();
-				case K.ENTER if( !longText ):
-					var old = currentValue;
-					// hack to insert newline and tranform the input into textarea
-					var newVal = i.val() + "\n";
-					Reflect.setField(line.obj, column.name, newVal+"x");
-					refresh();
-					Reflect.setField(line.obj, column.name,old);
-					currentValue = newVal;
-					edit();
-					(cast elementHtml.querySelector("textarea") : js.html.TextAreaElement).setSelectionRange(newVal.length,newVal.length);
 					e.preventDefault();
 				case K.UP, K.DOWN if( !longText ):
 					closeEdit();
@@ -830,8 +823,9 @@ class Cell {
 				}
 				e.stopPropagation();
 			});
-			i.keyup(function(_) try {
-				var v = editor.base.parseValue(column.type, i.val());
+			i.keyup(function(e) try {
+				var t : js.html.HtmlElement = cast e.target;
+				var v = editor.base.parseValue(column.type, t.innerText);
 
 				if (column.type == TId && !isUniqueID((v:String), true)) {
 					throw v + " is not a unique id";
@@ -847,7 +841,17 @@ class Cell {
 					closeEdit();
 			});
 			i.focus();
-			i.select();
+
+			// Select whole content of contenteditable div
+			{
+				var range =  js.Browser.document.createRange();
+				range.selectNodeContents(i[0]);
+				var sel = js.Browser.window.getSelection();
+				sel.removeAllRanges();
+				sel.addRange(range);
+			}
+
+
 			if( longText ) i.scrollTop(0);
 		case TBool:
 			setValue( currentValue == false && column.opt && table.displayMode != Properties ? null : currentValue == null ? true : currentValue ? false : true );
@@ -1050,10 +1054,15 @@ class Cell {
 			}
 		case TColor:
 			var elem = new Element(elementHtml);
-			var cb = new ColorPicker(false, elem, elem.find(".color"));
+			var preview = elem.find(".color");
+			if (preview.length < 1) {
+				elem.html('<div class="color" style="background-color:#${StringTools.hex(0xFFFFFF,6)}"></div>');
+				preview = elem.find(".color");
+			}
+			var cb = new ColorPicker(false, elem, preview);
 			cb.value = currentValue;
 			cb.onChange = function(drag) {
-				elem.find(".color").css({backgroundColor : '#'+StringTools.hex(cb.value,6) });
+				preview.css({backgroundColor : '#'+StringTools.hex(cb.value,6) });
 			};
 			cb.onClose = function() {
 				setValue(cb.value);
@@ -1239,47 +1248,11 @@ class Cell {
 
 		switch( column.type ) {
 		case TId:
-			var obj = line.obj;
-			var prevValue = value;
-			var realSheet = table.getRealSheet();
-			var isLocal = realSheet.idCol.scope != null;
-			var parentID = isLocal ? table.makeId([],realSheet.idCol.scope,null) : null;
-			// most likely our obj, unless there was a #DUP
-			var prevObj = value != null ? realSheet.index.get(isLocal ? parentID+":"+value : value) : null;
-			// have we already an obj mapped to the same id ?
-			var prevTarget = realSheet.index.get(isLocal ? parentID+":"+newValue : newValue);
-
-			if (isUniqueID(newValue, true))
-			{
-				editor.beginChanges();
-				if( prevObj == null || prevObj.obj == obj ) {
-					// remap
-					var m = new Map();
-					m.set(value, newValue);
-					if( isLocal ) {
-						var scope = table.getScope();
-						var parent = scope[scope.length - realSheet.idCol.scope];
-						editor.base.updateLocalRefs(realSheet, m, parent.obj, parent.s);
-					} else
-						editor.base.updateRefs(realSheet, m);
-				}
-				setValue(newValue);
-				editor.endChanges();
-				editor.refreshRefs();
-				focus();
-
-				// Refresh display of all ids in the column manually
-				var colId = table.sheet.columns.indexOf(column);
-				for (l in table.lines) {
-					if (l.cells[colId] != null)
-						l.cells[colId].refresh(false);
-				}
+			if (isUniqueID(newValue, true)) {
+				editor.changeID(line.obj, newValue, column, table);
+				currentValue = newValue;
 			}
-			/*
-			// creates or remove a #DUP : need to refresh the whole table
-			if( prevTarget != null || (prevObj != null && (prevObj.obj != obj || table.sheet.index.get(prevValue) != null)) )
-				table.refresh();
-			*/
+			focus();
 		case TString if( column.kind == Script || column.kind == Localizable ):
 			setValue(StringTools.trim(newValue));
 		case TTilePos:
@@ -1320,8 +1293,8 @@ class Cell {
 
 	public function closeEdit() {
 		inEdit = false;
-		var input : js.html.InputElement = cast elementHtml.querySelector("input, textarea");
-		if(input != null &&  input.value != null ) setRawValue(input.value);
+		var input = elementHtml.querySelector("div[contenteditable]");
+		if(input != null && input.innerText != null ) setRawValue(input.innerText);
 		refresh();
 		focus();
 	}

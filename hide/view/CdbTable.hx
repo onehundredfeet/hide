@@ -24,7 +24,125 @@ class CdbTable extends hide.ui.View<{}> {
 		view = cast this.config.get("cdb.view");
 	}
 
-	public function goto( s : cdb.Sheet, ?line : Int, ?column : Int ) {
+	public function goto2(rootSheet : cdb.Sheet, path: hide.comp.cdb.Editor.Path) {
+
+
+		var sheets = [for( s in getSheets() ) s.name];
+		var index = sheets.indexOf(rootSheet.name);
+		if( index < 0 ) return;
+		if (tabs.currentTab.get(0) != tabContents[index].parent().get(0)) {
+			tabs.currentTab = tabContents[index].parent();
+		}
+		editor.setFilter(null);
+		var curTable = @:privateAccess editor.tables[0];
+		var lastCell = null;
+		for (i => part in path) {
+			var lineNo = 0;
+			var colNo = 0;
+			switch (part) {
+				case Id(idcol, name, target):
+					for (l in curTable.lines) {
+						if (Reflect.field(l.obj, idcol) == name) {
+							break;
+						}
+						lineNo +=1;
+					}
+					if (target != null) {
+						for (c in curTable.columns) {
+							if (c.name == target) {
+								break;
+							}
+							colNo += 1;
+						}
+					}
+				case Prop(name):
+					var props = curTable.sheet.lines[0];
+					var cols = curTable.columns;
+
+					if (props != null) {
+						for (c in curTable.columns) {
+							if (c.name == name)
+								break;
+							if (curTable.shouldDisplayProp(props, c)) {
+								lineNo += 1;
+							}
+						}
+					}
+				case Line(id,target):
+					lineNo = id;
+					if (target != null) {
+						for (c in curTable.columns) {
+							if (c.name == target) {
+								break;
+							}
+							colNo += 1;
+						}
+					}
+				case Script(line):
+					var cell = lastCell;
+					if (cell != null) {
+						//cell.open(false);
+						var scr = Std.downcast(cell.line.subTable, hide.comp.cdb.ScriptTable);
+						if (scr != null) {
+							haxe.Timer.delay(function() {
+								@:privateAccess scr.script.editor.setPosition({column:0, lineNumber: line+1});
+								haxe.Timer.delay(() ->@:privateAccess scr.script.editor.revealLineInCenter(line+1), 1);
+							}, 1);
+						}
+					}
+					colNo = -1;
+					lineNo = -1;
+			}
+
+			if (i == path.length-1) {
+				editor.pushCursorState();
+			}
+			trace(i, colNo, lineNo);
+			if (colNo >= 0 && lineNo >= 0) {
+				editor.cursor.set(curTable, colNo, lineNo, i == path.length-1);
+				lastCell = editor.cursor.getCell();
+				if( editor.cursor.table != null) {
+					editor.cursor.table.expandLine(lineNo);
+					if (i < path.length-1) {
+						var sub = editor.cursor.getLine().subTable;
+						var cell = editor.cursor.getCell();
+						if (sub != null && sub.cell == cell) {
+							curTable = sub;
+						}
+						else {
+							cell.open(false);
+							curTable = editor.cursor.table;
+						}
+					}
+				}
+			}
+
+		}
+		haxe.Timer.delay(editor.focus,1);
+		/*for (i in 0...coords.length) {
+			var c = coords[i];
+			editor.cursor.set(curTable, c.column, c.line);
+			if( editor.cursor.table != null && c.line != null ) {
+				editor.cursor.table.expandLine(c.line);
+				if (i < coords.length - 1) {
+					var sub = editor.cursor.getLine().subTable;
+					var cell = editor.cursor.getCell();
+					if (sub != null && sub.cell == cell) {
+						curTable = sub;
+					}
+					else {
+						cell.open(false);
+						curTable = editor.cursor.table;
+					}
+				}
+			}
+			else
+				break;
+		}*/
+
+	}
+
+	public function goto( s : cdb.Sheet, ?line : Int, ?column : Int, ?scriptLine : Int ) {
 		var sheets = [for( s in getSheets() ) s.name];
 		var index = sheets.indexOf(s.name);
 		if( index < 0 ) return;
@@ -35,6 +153,16 @@ class CdbTable extends hide.ui.View<{}> {
 				editor.cursor.setDefault(line, column);
 			if( editor.cursor.table != null )
 				editor.cursor.table.expandLine(line);
+			if (scriptLine != null) {
+				var cell = editor.cursor.getCell();
+				if (cell != null) {
+					cell.open(false);
+					var scr = Std.downcast(cell.line.subTable, hide.comp.cdb.ScriptTable);
+					if (scr != null) {
+						@:privateAccess scr.script.editor.setPosition({column:0, lineNumber: scriptLine});
+					}
+				}
+			}
 		}
 		editor.focus();
 		haxe.Timer.delay(() -> editor.cursor.update(), 1); // scroll

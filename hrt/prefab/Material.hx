@@ -28,6 +28,7 @@ class Material extends Prefab {
 	override function save() {
 		var obj : Dynamic = super.save();
 		if(color != null && h3d.Vector.fromArray(color).toColor() != 0xffffffff) obj.color = color;
+		if(mainPassName == "" || mainPassName == null ) Reflect.deleteField(obj, "mainPassName");
 		return obj;
 	}
 
@@ -44,16 +45,13 @@ class Material extends Prefab {
 
 	public function getMaterials( ctx : Context ) {
 		var mats = ctx.local3d.getMaterials();
-		var mat = Lambda.find(mats, m -> m.name == this.name || m.name == materialName);
+		var mat = Lambda.find(mats, m -> m.name == this.name || (m.name != null && m.name == materialName));
 		return mat == null ? mats : [mat];
 	}
 
 	function update(mat : h3d.mat.Material, props, loadTexture : String -> h3d.mat.Texture) {
-		mat.props = props;
 		if(color != null)
 			mat.color.setColor(h3d.Vector.fromArray(color).toColor());
-		if(mainPassName != null)
-			mat.mainPass.setPassName(mainPassName);
 
 		inline function getTex(pname: String) {
 			var p : String = Reflect.field(this, pname);
@@ -69,6 +67,10 @@ class Material extends Prefab {
 		if( getTex("diffuseMap") != null ) mat.texture = getTex("diffuseMap");
 		if( getTex("normalMap") != null ) mat.normalMap = getTex("normalMap");
 		if( getTex("specularMap") != null ) mat.specularTexture = getTex("specularMap");
+		mat.props = props;
+
+		if(mainPassName != null && mainPassName.length > 0 )
+			mat.mainPass.setPassName(mainPassName);
 	}
 	
 	override function updateInstance( ctx : Context, ?propName ) {
@@ -79,16 +81,15 @@ class Material extends Prefab {
 		var props = renderProps();
 		#if editor
 		if ( mats == null || mats.length == 0 ) {
-			try {
-				var path = hide.Ide.inst.currentConfig.get("material.preview", []);
-				var preview = ctx.loadModel(path);
-				ctx.local3d.parent.addChild(preview);
-				ctx.local3d = preview;
-				ctx.local3d.x = ctx.local3d.getScene().getMaterials().length * 5.0;
-				mats = getMaterials(ctx);
-			} catch ( e:Dynamic) {
-
-			}
+			var sphere = new h3d.prim.Sphere(1., 64, 48);
+			sphere.addUVs();
+			sphere.addNormals();
+			sphere.addTangents();
+			var preview = new h3d.scene.Mesh(sphere);
+			ctx.local3d.parent.addChild(preview);
+			ctx.local3d = preview;
+			ctx.local3d.x = ctx.local3d.getScene().getMaterials().length * 5.0;
+			mats = getMaterials(ctx);
 		}
 		#end
 		for( m in mats )

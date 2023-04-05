@@ -380,6 +380,7 @@ class Table extends Component {
 				syncLevel = sepInfo.level;
 				sep.addClass('seplevel-'+(syncLevel == null ? 0 : syncLevel));
 			}
+			sep.attr("level", syncLevel == null ? 0 : sepInfo.level);
 		}
 
 		sep.contextmenu(function(e) {
@@ -592,6 +593,10 @@ class Table extends Component {
 		return ids.join(":");
 	}
 
+	public function shouldDisplayProp(props: Dynamic, c:cdb.Data.Column) {
+		return !( c.opt && props != null && !Reflect.hasField(props,c.name) && displayMode != AllProperties );
+	}
+
 	function refreshProperties() {
 		lines = [];
 
@@ -602,7 +607,7 @@ class Table extends Component {
 
 			if( c.type.match(TList | TProperties) ) isLarge = true;
 
-			if( c.opt && props != null && !Reflect.hasField(props,c.name) && displayMode != AllProperties ) {
+			if(!shouldDisplayProp(props, c)) {
 				available.push(c);
 				continue;
 			}

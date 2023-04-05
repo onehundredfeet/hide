@@ -71,16 +71,17 @@ class OrthoController extends CameraControllerBase {
 		switch( e.kind ) {
 		case EWheel:
 			if (e.wheelDelta > 0) {
-				orthoZoom /= 1.1;
+				orthoZoom *= 1.1;
 			}
 			else {
-				orthoZoom *= 1.1;
+				orthoZoom /= 1.1;
 			}
 		case EPush:
 			sceneEditor.view.keys.pushDisable();
 
 			pushing = e.button;
-			if (pushing == 0 && K.isDown(K.ALT)) pushing = 2;
+			if (pushing == 0 && K.isDown(K.ALT))
+                pushing = 2;
 			pushTime = haxe.Timer.stamp();
 			pushStartX = pushX = e.relX;
 			pushStartY = pushY = e.relY;
@@ -123,7 +124,7 @@ class OrthoController extends CameraControllerBase {
 					if(startPush != null && startPush.distance(new h2d.col.Point(e.relX, e.relY)) > 3) {
 						var angle = hxd.Math.abs(Math.PI/2 - phi);
 						if(K.isDown(K.SHIFT) || angle < groundSnapAngle) {
-							var m = 0.001 * curPos.x * panSpeed / 25;
+							var m = orthoZoom * panSpeed / 25;
 							pan(-(e.relX - pushX) * m, (e.relY - pushY) * m);
 						}
 						else {
@@ -202,6 +203,8 @@ class OrthoController extends CameraControllerBase {
 		ctx.elapsedTime = hxd.Timer.dt;
 		super.sync(ctx);
 		ctx.elapsedTime = old;
+
+        trace(orthoZoom, curPos.x, cam.m, cam.getInverseViewProj());
 	}
 }
 
@@ -504,13 +507,22 @@ class FlightController extends CameraControllerBase {
 
 
 	override public function set(?distance:Float, ?theta:Float, ?phi:Float, ?target:h3d.col.Point, ?fovY:Float) {
-		if (distance == null && target != null) {
-			distance = target.toVector().sub(currentFlightPos).length();
+		trace(distance, theta, phi, target, fov);
+
+		if (target != null) {
+			var tv = target.toVector();
+			var dir = tv.sub(currentFlightPos);
+			if (distance == null) {
+				distance = dir.length();
+			}
+			dir.normalize();
+			targetFlightRot.initDirection(dir);
+			targetFlightRot.normalize();
+			//currentFlightRot = targetFlightRot;
+			dir.scale(distance);
+			targetFlightPos = tv.sub(dir);
+			syncCamera();
 		}
-		super.set(distance, theta, phi, target, fovY);
-		curPos = targetPos;
-		super.syncCamera();
-		loadFromCamera(true);
 	}
 
 	function moveKeys() {
@@ -695,11 +707,11 @@ class FlightController extends CameraControllerBase {
 		currentFlightRot.load(targetFlightRot);
 	}
 
-
 	override function syncCamera() {
 		var cam = getScene().camera;
 		currentFlightPos.lerp(currentFlightPos, targetFlightPos, 0.1);
 		currentFlightRot.slerp(currentFlightRot, targetFlightRot, 0.1);
+		currentFlightRot.normalize();
 
 		cam.orthoBounds = null;
 
