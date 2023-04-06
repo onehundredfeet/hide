@@ -28,7 +28,7 @@ class Evaluator {
 			case VRandomScale(ridx, scale):
 				return getRandom(pidx, ridx) * scale;
 			case VAddRandCurve(cst, ridx, rscale, c):
-				return (cst + getRandom(pidx, ridx) * rscale) * c.getVal(time);
+				return (cst + getRandom(pidx, ridx) * rscale) * c.evaluate(time);
 			case VMult(a, b):
 				return getFloat(pidx, a, time) * getFloat(pidx, b, time);
 			case VAdd(a, b):
