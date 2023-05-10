@@ -132,7 +132,7 @@ class Model extends Object3D {
 				<dl>
 					<dt>Model</dt><dd><input type="model" field="source"/></dd>
 					<dt/><dd><input type="button" value="Change All" id="changeAll"/></dd>
-					<dt>Animation</dt><dd><select><option value="">-- Choose --</option></select>
+					<dt>Animation</dt><dd><input id="anim" value="--- Choose ---"></dd>
 					<dt title="Don\'t save animation changes">Lock</dt><dd><input type="checkbox" field="lockAnimation"></dd>
 					<dt>Retarget</dt><dd><input type="checkbox" field="retargetAnim"></dd>
 					<dt>Retarget Ignore</dt><dd><input type="text" field="retargetIgnore"></dd>
@@ -148,14 +148,17 @@ class Model extends Object3D {
 			ctx.scene.editor.changeAllModels(this, path);
 		}));
 
-		var select = props.find("select");
+
 		var anims = try ctx.scene.listAnims(source) catch(e: Dynamic) [];
+		var elts: Array<hide.comp.Dropdown.Choice> = [];
 		for( a in anims )
-			new hide.Element('<option>').attr("value", ctx.ide.makeRelative(a)).text(ctx.scene.animationName(a)).appendTo(select);
-		if( animation != null )
-			select.val(animation);
-		select.change(function(_) {
-			var v = select.val();
+			elts.push({id : ctx.ide.makeRelative(a), ico : null, text : ctx.scene.animationName(a), classes : ["compact"]});
+
+
+		var select = new hide.comp.Select(null, props.find("#anim"), elts);
+		select.value = animation;
+		select.onChange = function(newAnim : String) {
+			var v = newAnim;
 			var prev = animation;
 			var obj = ctx.getContext(this).local3d;
 			ctx.scene.setCurrent();
@@ -173,14 +176,15 @@ class Model extends Object3D {
 				animation = undo ? prev : newValue;
 				if( animation == null ) {
 					obj.stopAnimation();
-					select.val("");
 				} else {
 					obj.playAnimation(ctx.rootContext.loadAnimation(animation)).loop = true;
-					select.val(v);
 				}
+				select.value = animation;
 			}));
-		});
+		}
 	}
+
+
 
 	override function getHideProps() : HideProps {
 		return {

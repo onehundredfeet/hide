@@ -281,7 +281,11 @@ class Cell {
 
 		switch( column.type ) {
 		case TEnum(values):
-			elementHtml.title = getEnumValueDoc(values[value]);
+			var doc = getEnumValueDoc(values[value]);
+			if (doc != null)
+				elementHtml.title = doc;
+		case TId, TRef(_):
+			elementHtml.title = value;
 		default:
 		}
 		blurOff = false;
@@ -763,7 +767,7 @@ class Cell {
 	public function edit() {
 		if( !canEdit() )
 			return;
-		useSelect2 = this.editor.config.get("cdb.useSelect2") || (Std.isOfType(editor, ObjEditor) && editor.element.parent().hasClass("detached"));
+		//useSelect2 = this.editor.config.get("cdb.useSelect2") || (Std.isOfType(editor, ObjEditor) && editor.element.parent().hasClass("detached"));
 		inEdit = true;
 
 		switch( column.type ) {
@@ -786,13 +790,20 @@ class Cell {
 			i.keypress(function(e) {
 				e.stopPropagation();
 			});
+
+			i[0].addEventListener("paste", function(e) {
+				e.preventDefault();
+
+				var event : Dynamic = e;
+				if (e.originalEvent != null) {
+					event = e.originalEvent;
+				}
+				var text = event.clipboardData.getData('text/plain');
+
+				js.Browser.document.execCommand("insertHTML", false, text);
+			});
 			i.dblclick(function(e) e.stopPropagation());
-			//if( str != "" && (table.displayMode == Properties || table.displayMode == AllProperties) )
-			//	i.css({ width : Math.ceil(textWidth - 3) + "px" }); -- bug if small text ?
-			/*if( longText ) {
-				elementHtml.classList.add("edit_long");
-				i.css({ height : Math.max(25,Math.ceil(textHeight - 1)) + "px" });
-			}*/
+
 			i.val(str);
 			function closeEdit() {
 				i.off();
@@ -912,7 +923,7 @@ class Cell {
 						return new Element("<div style='display:inline-block;width:16px'/>");
 					return new Element(tileHtml(c.ico, true).str);
 				}
-				var d = new Dropdown(new Element(elementHtml), elts, currentValue, makeIcon);
+				var d = new Dropdown(new Element(elementHtml), elts, currentValue, makeIcon, true);
 				dropdown = d.element[0];
 				d.onSelect = function(v) {
 					setValue(v);
@@ -989,7 +1000,7 @@ class Cell {
 				}];
 				if( column.opt )
 					elts.unshift( { id : "-1", text : "--- None ---" } );
-				var d = new Dropdown(new Element(elementHtml), elts, "" + currentValue);
+				var d = new Dropdown(new Element(elementHtml), elts, "" + currentValue, true);
 				d.onSelect = function(v) {
 					var val = Std.parseInt(v);
 					if( val < 0 ) val = null;
@@ -1294,6 +1305,7 @@ class Cell {
 	public function closeEdit() {
 		inEdit = false;
 		var input = elementHtml.querySelector("div[contenteditable]");
+
 		if(input != null && input.innerText != null ) setRawValue(input.innerText);
 		refresh();
 		focus();

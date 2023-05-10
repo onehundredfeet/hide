@@ -10,7 +10,42 @@ import hrt.prefab.Object3D;
 import hrt.prefab.l3d.Instance;
 import hide.comp.cdb.DataFiles;
 
+class FiltersPopup extends hide.comp.Popup {
+	var editor:Prefab;
 
+	public function new(?parent:Element, ?root:Element, editor:Prefab, filters:Map<String, Bool>, type:String) {
+		super(parent, root);
+		this.editor = editor;
+		popup.addClass("settings-popup");
+		popup.css("max-width", "300px");
+
+		var form_div = new Element("<div>").addClass("form-grid").appendTo(popup);
+
+		{
+			for (typeid in filters.keys()) {
+				var on = filters[typeid];
+				var input = new Element('<input type="checkbox" id="$typeid" value="$typeid"/>');
+				if (on)
+					input.get(0).toggleAttribute("checked", true);
+
+				input.change((e) -> {
+					var on = !filters[typeid];
+					filters.set(typeid, on);
+
+					switch (type) {
+						case "Graphics":
+							@:privateAccess editor.applyGraphicsFilter(typeid, on);
+						case "Scene":
+							@:privateAccess editor.applySceneFilter(typeid, on);
+					}
+				});
+				form_div.append(input);
+				var nameCap = typeid.substr(0, 1).toUpperCase() + typeid.substr(1);
+				form_div.append(new Element('<label for="$typeid" class="left">$nameCap</label>'));
+			}
+		}
+	}
+}
 
 @:access(hide.view.Prefab)
 private class PrefabSceneEditor extends hide.comp.SceneEditor {
@@ -437,15 +472,15 @@ class Prefab extends FileView {
 
 		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
 
-		toolsDefs.push({id: "viewModes", title : "View Modes", type : Menu(filtersToMenuItem(viewModes, "View"))});
+		toolsDefs.push({id: "viewModes", title: "View Modes", type: Popup((e) -> new hide.comp.SceneEditor.ViewModePopup(null, e, Std.downcast(@:privateAccess scene.s3d.renderer, h3d.scene.pbr.Renderer)))});
 
 		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
 
-		toolsDefs.push({id: "graphicsFilters", title : "Graphics filters", type : Menu(filtersToMenuItem(graphicsFilters, "Graphics"))});
+		toolsDefs.push({id: "graphicsFilters", title : "Graphics filters", type : Popup((e) -> new FiltersPopup(null, e, this, sceneFilters, "Graphics"))});
 
 		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
 
-		toolsDefs.push({id: "sceneFilters", title : "Scene filters", type : Menu(filtersToMenuItem(sceneFilters, "Scene"))});
+		toolsDefs.push({id: "sceneFilters", title : "Scene filters", type : Popup((e) -> new FiltersPopup(null, e, this, sceneFilters, "Scene"))});
 
 		toolsDefs.push({id: "", title : "", icon : "", type : Separator});
 

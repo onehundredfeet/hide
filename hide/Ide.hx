@@ -243,7 +243,13 @@ class Ide {
 			return false;
 		}
 		new Element(window.window.document).on("dnd_move.vakata.jstree", function(e, data:Dynamic) {
-			(data.helper:hide.Element).css(treeDragFun(data,false) ? { filter : "brightness(120%)", opacity : 1 } : { filter : "", opacity : 0.5 });
+			var el = (data.helper:hide.Element);
+			var drag = treeDragFun(data,false);
+			trace(drag);
+			var icon = el.find(new Element(".jstree-icon"));
+			el.css(drag ? { filter : "brightness(120%)", opacity : 1 } : { filter : "", opacity : 0.5 });
+			icon.toggleClass("jstree-er", !drag);
+			icon.toggleClass("jstree-ok", drag);
 		});
 		new Element(window.window.document).on("dnd_stop.vakata.jstree", function(e, data) {
 			treeDragFun(data,true);
@@ -1080,6 +1086,13 @@ class Ide {
 		}
 		var title = config.current.get("hide.windowTitle");
 		window.title = title != null ? title : ((isCDB ? "CastleDB" : "HIDE") + " - " + projectDir);
+	}
+
+	public function runCommand(cmd, ?callb) {
+		var c = cmd.split("%PROJECTDIR%").join(projectDir);
+		var slash = isWindows ? "\\" : "/";
+		c = c.split("/").join(slash);
+		js.node.ChildProcess.exec(c, callb);
 	}
 
 	public function initMenu() {

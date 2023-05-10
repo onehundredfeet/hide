@@ -427,7 +427,7 @@ class Editor extends Component {
 			}
 		}
 
-		if( prevTarget != null || (prevObj != null && (prevObj.obj != obj || table.sheet.index.get(prevValue) != null)) )
+		if( prevTarget != null || (prevObj != null && (prevObj.obj != obj || (table.sheet.index != null && table.sheet.index.get(prevValue) != null))) )
 			table.refresh();
 	}
 
@@ -806,8 +806,46 @@ class Editor extends Component {
 		}));
 	}
 
+	static var runningHooks = false;
+	static var queuedCommand: Void -> Void = null;
 	function save() {
 		api.save();
+
+		function hookEnd() {
+			runningHooks = false;
+			if (queuedCommand != null) {
+				var a = queuedCommand;
+				queuedCommand = null;
+				a();
+			}
+		}
+		var hooks: Array<{cmd: String, sheets: Array<String>}> = this.config.get("cdb.onChangeHooks");
+		if( hooks != null ) {
+			var s = getCurrentSheet();
+			var commands = [for (h in hooks) if (h.sheets.has(s)) h.cmd];
+			function runRec(i: Int) {
+				runningHooks = true;
+				ide.runCommand(commands[i], (e, stdout, stderr) -> {
+					if (e != null) {
+						ide.error('Hook error:\n$e');
+						hookEnd();
+					} else {
+						if (i < commands.length - 1) {
+							runRec(i + 1);
+						} else  {
+							hookEnd();
+						}
+					}
+				});
+			}
+			if (!commands.isEmpty()) {
+				if (runningHooks) {
+					queuedCommand = () -> runRec(0);
+				} else {
+					runRec(0);
+				}
+			}
+		}
 	}
 
 
@@ -956,8 +994,12 @@ class Editor extends Component {
 				var idx = rs.o.indexes[i];
 				if( oid == null || oid == "" )
 					path.push(s.s.name.split("@").pop() + (idx < 0 ? "" : "[" + idx +"]"));
-				else
+				else {
 					path.push(oid);
+				}
+				if (i == rs.s.length - 1 && s.c != "" && s.c != null) {
+					path.push(s.c);
+				}
 			}
 
 			var coords = [];
