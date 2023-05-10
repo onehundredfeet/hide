@@ -148,7 +148,8 @@ class ContextShared {
 	}
 
 	public function loadPrefab( path : String ) : Prefab {
-		return hxd.res.Loader.currentInstance.load(path).toPrefab().load();
+		var x : hrt.prefab.Resource = cast(hxd.res.Loader.currentInstance.load(path).toPrefab(),hrt.prefab.Resource);
+		return x.load();
 	}
 
 	public function loadShader( path : String ) : ShaderDef {
