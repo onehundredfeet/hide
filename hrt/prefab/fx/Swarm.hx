@@ -177,7 +177,7 @@ class Swarm extends Object3D {
 	override function createObject(ctx:Context) {
 		return new SwarmObject(ctx.local3d, this);
 	}
-
+	#if editor
 	override function getHideProps() : HideProps {
 		return { icon : "random", name : "Swarm", allowParent : function(p) return p.to(FX) != null || p.getParent(FX) != null };
 	}
@@ -197,6 +197,6 @@ class Swarm extends Object3D {
 			</dl>
 		</div>'), this);
 	}
-
+#end
 	static var _ = hrt.prefab.Library.register("Swarm", Swarm);
 }
