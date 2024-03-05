@@ -10,14 +10,14 @@ class ModalCurveEditor extends Modal {
 	var editor : Editor;
 	var sheet : cdb.Sheet;
     var _curve : Curve;
-    var _curveEditor : CurveEditor;
+    var _curveEditor : CDBCurveEditor;
     var _cell : Cell;
     final modalEditorWidth = 1024;
     final modalEditorHeight = 800;
 
     final minHeight = 300;
 
-    function curveUpdate( ce : CurveEditor) {
+    function curveUpdate( ce : CDBCurveEditor) {
 		_cell.setValue( ce.value() );
 	}
 
@@ -38,7 +38,7 @@ class ModalCurveEditor extends Modal {
         curveContainer.width("100%");
         curveContainer.height("100%");
 
-        _curveEditor = new CurveEditor(editor.undo, curveContainer);
+        _curveEditor = new CDBCurveEditor(editor.undo, curveContainer);
 
   //      this.element.width(modalEditorWidth);
 //        this.element.height(modalEditorHeight);
