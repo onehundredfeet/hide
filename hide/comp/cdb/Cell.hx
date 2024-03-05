@@ -2,6 +2,9 @@ package hide.comp.cdb;
 
 import hxd.Key in K;
 using hide.tools.Extensions;
+// < Added by ryan
+import cdb.Curve;
+// > Added by ryan
 
 class Cell {
 
@@ -22,6 +25,10 @@ class Cell {
 	var blurOff = false;
 	public var inEdit = false;
 	var dropdown : Element.HTMLElement = null;
+
+	// < Added by ryan
+	var curve:Curve;
+	// > Added by ryan
 
 	public function new( root : Element.HTMLElement, line : Line, column : cdb.Data.Column ) {
 		this.elementHtml = root;
