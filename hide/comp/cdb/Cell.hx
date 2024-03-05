@@ -485,13 +485,13 @@ class Cell {
 		// < Added by RC
 		case TFloat2:
 			var v : cdb.Types.Float2 = v;
-			v.x + "," + v.y;
+			val(v.x + "," + v.y);
 		case TFloat3:
 			var v : cdb.Types.Float3 = v;
-			v.x + "," + v.y + "," + v.z;
+			val(v.x + "," + v.y + "," + v.z);
 		case TFloat4:
 			var v : cdb.Types.Float4 = v;
-			v.x + "," + v.y + "," + v.z + "," + v.w;
+			val(v.x + "," + v.y + "," + v.z + "," + v.w);
 		case TCurve:
 			val("#DATA");
 		// > Added by RC
