@@ -482,6 +482,10 @@ class Cell {
 			var str = Std.string(v).split("\n").join(" ").split("\t").join("");
 			if( str.length > 50 ) str = str.substr(0, 47) + "...";
 			val(str);
+		// < Added by RC
+		case TCurve, TFloat2, TFloat3, TFloat4:
+			val("#DATA");
+		// > Added by RC
 		}
 	}
 
@@ -1186,6 +1190,10 @@ class Cell {
 			// no edit
 		case TImage:
 			// deprecated
+			// < Added by RC
+		case TCurve, TFloat2, TFloat3, TFloat4:
+			
+		// > Added by RC
 		}
 	}
 

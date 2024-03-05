@@ -403,6 +403,10 @@ class FormulasView extends hide.view.Script {
 					c.type == TList ? @:privateAccess check.checker.types.getType("Array",[t]) : t;
 				case TString, TFile:
 					tstring;
+				// < Added by RC
+				case TCurve, TFloat2, TFloat3, TFloat4:
+					TDynamic;
+				// > Added by RC
 				}
 				if( t == null ) continue;
 				cdef.fields.set(c.name, { t : t, name : c.name, isPublic : true, complete : true, canWrite : false, params : [] });
