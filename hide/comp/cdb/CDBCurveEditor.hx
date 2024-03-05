@@ -13,7 +13,6 @@ class CDBCurveEditor extends Component {
 	public var yOffset = 0.;
 
 	public var curve(default, set):cdb.Curve.Curve;
-	public var prefab:CurvePrefab;
 	public var undo:hide.ui.UndoHistory;
 	public var listener:CurveListener;
 
@@ -194,12 +193,6 @@ class CDBCurveEditor extends Component {
 
 	public dynamic function onKeyMove(key:CurveKey, prevTime:Float, prevVal:Float) {}
 
-	function set_prefab(prefab:CurvePrefab) {
-		this.prefab;
-		curve = prefab.curve;
-
-		return this.prefab;
-	}
 
 	function set_curve(curve:cdb.Curve.Curve) {
 		if (curve == null) {

@@ -62,11 +62,9 @@ class Cell {
 			elementHtml.addEventListener("click", function(_) edit());
 		// <Added by ryan
 		case TCurve:
-			element.dblclick(function(_) {
+			elementHtml.addEventListener("dblclick", function(_) {
 				var modal = new hide.comp.cdb.ModalCurveEditor(this, curve, editor, line.table.getRealSheet(), column, editor.element);
 			});
-			root.classList.add("t_script");
-			elementHtml.addEventListener("click", function(_) edit());
 		// </Added by ryan
 
 		default:
