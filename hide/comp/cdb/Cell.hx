@@ -70,7 +70,7 @@ class Cell {
 		// <Added by ryan
 		case TCurve:
 			elementHtml.addEventListener("dblclick", function(_) {
-				var modal = new hide.comp.cdb.ModalCurveEditor(this, curve, editor, line.table.getRealSheet(), column, editor.element);
+				var modal = new hide.comp.cdb.ModalCurveEditor(this, editor, line.table.getRealSheet(), column, editor.element);
 			});
 		// </Added by ryan
 

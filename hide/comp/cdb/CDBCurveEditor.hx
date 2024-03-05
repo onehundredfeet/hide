@@ -199,6 +199,8 @@ class CDBCurveEditor extends Component {
 			throw "Can't set a null curve";
 		}
 
+        trace('Setting curve ${curve}');
+        
 		this.curve = curve;
 		maxLength = curve.maxTime;
 		lastValue = haxe.Json.parse(haxe.Json.stringify(curve.save()));

@@ -21,8 +21,10 @@ class ModalCurveEditor extends Modal {
 		_cell.setValue( ce.value() );
 	}
 
-	public function new( cell : Cell, curve : Curve, editor : Editor, sheet : cdb.Sheet, column : cdb.Data.Column, ?parent,?el) {
+	public function new( cell : Cell, editor : Editor, sheet : cdb.Sheet, column : cdb.Data.Column, ?parent,?el) {
 		super(parent,el);
+
+		var curve = cdb.Curve.fromDynamic(Reflect.field(cell.line.obj, column.name));
 
         _curve = curve;
         _cell = cell;
