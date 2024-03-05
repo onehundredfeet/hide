@@ -371,6 +371,16 @@ class ModalColumnForm extends Modal {
 			TDynamic;
 		case "properties":
 			TProperties;
+		// < Added by ryan
+		case "float2":
+			TFloat2;
+		case "float3":
+			TFloat3;
+		case "float4":
+			TFloat4;
+		case "curve":
+			TCurve;
+		// > Added by ryan
 		default:
 			return null;
 		}
