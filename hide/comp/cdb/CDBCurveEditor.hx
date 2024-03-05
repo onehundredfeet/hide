@@ -495,15 +495,6 @@ class CDBCurveEditor extends Component {
 		width = Math.round(svg.element.width());
 		height = Math.round(svg.element.height());
 
-		if (height == 0 && _parent != null) {
-			trace('A');
-			height = Math.round(_parent.height());
-		}
-		if (width == 0 && _parent != null) {
-			trace('B');
-			width = Math.round(_parent.width());
-		}
-
 		if (height == 0) {
 			trace('C');
 			height = Math.round(300);
