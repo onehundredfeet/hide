@@ -721,7 +721,7 @@ class Cell {
 		switch( column.type ) {
 		case TString if( column.kind == Script ):
 			open();
-		case TInt, TFloat, TString, TId, TDynamic:
+		case TFloat2, TFloat3, TFloat4, TInt, TFloat, TString, TId, TDynamic:
 			var val = value;
 			if (column.display == Percent) {
 				val *= 100;
@@ -1200,7 +1200,7 @@ class Cell {
 		case TImage:
 			// deprecated
 			// < Added by RC
-		case TCurve, TFloat2, TFloat3, TFloat4:
+		case TCurve:
 			
 		// > Added by RC
 		}
