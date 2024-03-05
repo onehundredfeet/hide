@@ -60,6 +60,15 @@ class Cell {
 		case TString if( column.kind == Script ):
 			root.classList.add("t_script");
 			elementHtml.addEventListener("click", function(_) edit());
+		// <Added by ryan
+		case TCurve:
+			element.dblclick(function(_) {
+				var modal = new hide.comp.cdb.ModalCurveEditor(this, curve, editor, line.table.getRealSheet(), column, editor.element);
+			});
+			root.classList.add("t_script");
+			elementHtml.addEventListener("click", function(_) edit());
+		// </Added by ryan
+
 		default:
 			if( canEdit() )
 				elementHtml.addEventListener("dblclick", function(_) if (!blockEdit()) edit());
