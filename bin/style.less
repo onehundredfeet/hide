@@ -15,6 +15,30 @@ body {
 	user-select:none;
 }
 
+.quickMessage {
+	display: flex;
+	position : absolute;
+	z-index : 999;
+	bottom:50px;
+	left:800px;
+	border : 1px solid #686868;
+	border-radius : 5px;
+
+	.icon {
+		border : 0px solid #686868;
+		border-radius : 4px 0px 0px 4px;
+		padding: 5px 5px 3px 5px;
+		background: #666666;
+	}
+
+	.text {
+		border : 0px solid #686868;
+		border-radius : 0px 4px 4px 0px;
+		background: #222222;
+		padding: 3px 10px 3px 3px;
+	}
+}
+
 .globalErrorMessage {
 	position : absolute;
 	z-index : 999;
@@ -1152,7 +1176,8 @@ input[type=checkbox] {
 	dd, dt {
 		vertical-align:middle;
 		display:inline-block;
-		overflow-x:hidden;
+		text-wrap: wrap;
+		word-break: break-word;
 		margin-top:4px;
 
 		span {
@@ -2452,6 +2477,37 @@ input[type=checkbox] {
 			}
 			.outline {
 				fill: none;
+			}
+
+			.resize {
+				fill: rgba(0, 0, 0, 0.0);
+				stroke: none;
+			}
+
+			.comment {
+				.head-box {
+					fill: rgba(80,80,80,0.5);
+					stroke-width: 3;
+				}
+
+				.outline {
+					stroke-width: 3;
+				}
+			}
+
+			.comment-title {
+				display: inline-block;
+				max-width: calc(100% - 30px);
+				min-width: 20px;
+				height: 100%;
+				font-size: 2em;
+				background: rgba(0,0,0,0);
+				border: none;
+				overflow-x: hidden;
+				text-wrap: nowrap;
+				br {
+					display: none;
+				}
 			}
 
 			.head-box {

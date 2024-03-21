@@ -181,7 +181,7 @@ class Gradient {
 
             var vec = new Vector4();
             for (x in 0...data.resolution) {
-                evalData(data, x / data.resolution, vec);
+                evalData(data, x / (data.resolution-1), vec);
                 pixels.setPixelF(x * xScale,x*yScale, vec);
             }
             return pixels;

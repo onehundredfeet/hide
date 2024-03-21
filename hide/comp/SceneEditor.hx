@@ -1040,8 +1040,12 @@ class SceneEditor {
 		if (!camera2D)
 			resetCamera();
 
-
 		var cam = @:privateAccess view.getDisplayState("Camera");
+		var isGlobalSettings = Ide.inst.currentConfig.get("sceneeditor.camera.isglobalsettings", false);
+		if (isGlobalSettings) {
+			cam = haxe.Json.parse(js.Browser.window.localStorage.getItem("Global/Camera"));
+		}
+
 		if( cam != null ) {
 			scene.s3d.camera.pos.set(cam.x, cam.y, cam.z);
 			scene.s3d.camera.target.set(cam.tx, cam.ty, cam.tz);
@@ -1092,7 +1096,13 @@ class SceneEditor {
 				camSpeed : cc.camSpeed,
 				fov : cc.wantedFOV,
 			};*/
-		@:privateAccess view.saveDisplayState("Camera", toSave);
+		var isGlobalSettings = Ide.inst.currentConfig.get("sceneeditor.camera.isglobalsettings", false);
+		if (isGlobalSettings) {
+			js.Browser.window.localStorage.setItem("Global/Camera", haxe.Json.stringify(toSave));
+		}
+		else {
+			@:privateAccess view.saveDisplayState("Camera", toSave);
+		}
 	}
 
     function loadSnapSettings() {
@@ -1302,6 +1312,26 @@ class SceneEditor {
 				tree.refresh();
 				refreshScene();
 			});
+
+			// When renaming a material, we want to rename every references in .props files
+			// of it, if it is a part of a material library
+			var prefabView = Std.downcast(view, hide.view.Prefab);
+			var mat = Std.downcast(e, hrt.prefab.Material);
+			if (prefabView != null && @:privateAccess prefabView.matLibPath != null && mat != null) {
+
+				var found = false;
+				for (entry in @:privateAccess prefabView.renameMatsHistory) {
+					if (entry.prefab == mat) {
+						entry.newName = name;
+						found = true;
+						break;
+					}
+				}
+
+				if (!found)
+					@:privateAccess prefabView.renameMatsHistory.push({ previousName: oldName, newName: name, prefab: e });
+			}
+
 			refreshScene();
 			return true;
 		};
@@ -1459,7 +1489,6 @@ class SceneEditor {
 	}
 
 	public function refreshScene() {
-
 		clearWatches();
 
 		if (root2d != null) root2d.remove();
@@ -2259,7 +2288,7 @@ class SceneEditor {
 	}
 
 	public function getObject(elt: PrefabElement) {
-		return elt.getLocal3d();
+		return elt.getLocal3d() ?? root3d;
 	}
 
 	public function getSelfObject(elt: PrefabElement) {
@@ -2295,6 +2324,10 @@ class SceneEditor {
 	}
 
 	function makePrefab(elt: PrefabElement) {
+		if (elt == sceneData) {
+			refreshScene();
+			return;
+		}
 		scene.setCurrent();
 
 		elt.shared.current3d = elt.parent.findFirstLocal3d();
@@ -2724,7 +2757,7 @@ class SceneEditor {
 			cameraController2D.initFromScene();
 		} else {
 			scene.s3d.camera.zNear = scene.s3d.camera.zFar = 0;
-			scene.s3d.camera.fovY = 25; // reset to default fov
+			scene.s3d.camera.fovY = 60; // reset to default fov
 			scene.resetCamera(distanceFactor);
 			cameraController.lockZPlanes = scene.s3d.camera.zNear != 0;
 			cameraController.loadFromCamera();
@@ -3414,11 +3447,27 @@ class SceneEditor {
 	function reparentElement(e : Array<PrefabElement>, to : PrefabElement, index : Int) {
 		if( to == null )
 			to = sceneData;
+		if (e.length == 0)
+			return;
 
 		var ref = Std.downcast(to, Reference);
 		@:privateAccess if( ref != null && ref.editMode ) to = ref.refInstance;
 
-		var effectFunc = reparentImpl(e, to, index);
+		// Sort node based on where they appear in the scene tree
+		var flat = sceneData.flatten();
+		var prefabIndex : Map<hrt.prefab.Prefab, Int> = [];
+		for (i => p in flat) {
+			prefabIndex.set(p,i);
+		}
+
+		e.sort(function (a: hrt.prefab.Prefab, b: hrt.prefab.Prefab) : Int {
+			return Reflect.compare(prefabIndex.get(a), prefabIndex.get(b));
+		});
+
+		// jstree index on onMove seems to be where the last item
+		// of the selection should end, so we correct that
+		var targetIndex = index - e.length + 1;
+		var effectFunc = reparentImpl(e, to, targetIndex);
 		undo.change(Custom(function(undo) {
 			refresh(effectFunc(undo) ? Full : Partial);
 		}));
@@ -3442,9 +3491,7 @@ class SceneEditor {
 
 	function reparentImpl(elts : Array<PrefabElement>, toElt: PrefabElement, index: Int) : Bool -> Bool {
 		var effects = [];
-		var fullRefresh = false;
-		var toRefresh : Array<PrefabElement> = null;
-		for(elt in elts) {
+		for(i => elt in elts) {
 			var prev = elt.parent;
 			var prevIndex = prev.children.indexOf(elt);
 
@@ -3457,46 +3504,46 @@ class SceneEditor {
 				var mat = worldMat(obj);
 				var parentMat = worldMat(toObj);
 				parentMat.invert();
-				prevState = obj3d.saveTransform();
 				mat.multiply(mat, parentMat);
+				prevState = obj3d.saveTransform();
 				newState = makeTransform(mat);
 			}
 
 			effects.push(function(undo) {
+				removeInstance(elt);
 				if( undo ) {
-					removeInstance(elt);
 					elt.parent = prev;
 					prev.children.remove(elt);
 					prev.children.insert(prevIndex, elt);
 					if(obj3d != null && prevState != null)
 						obj3d.loadTransform(prevState);
 				} else {
-					removeInstance(elt);
-					elt.parent = toElt;
-					toElt.children.remove(elt);
-					toElt.children.insert(index, elt);
+					@:bypassAccessor elt.parent = toElt;
+					elt.shared = toElt.shared;
+					toElt.children.insert(index + i, elt);
 					if(obj3d != null && newState != null)
 						obj3d.loadTransform(newState);
 				};
-				toRefresh.pushUnique(elt);
-				toRefresh.pushUnique(toElt);
-				return true;
 			});
 		}
 		return function(undo) {
-			var refresh = false;
-			toRefresh = [];
-			for(f in effects) {
-				if(f(undo))
-					refresh = true;
-			}
-			if(!refresh) {
-				for(elt in toRefresh) {
-					removeInstance(elt);
-					makePrefab(elt);
+
+			// Remove all the children from their parent before
+			// adding them back in. Makes the index of insert() correct
+			if (!undo) {
+				for (elt in elts) {
+					elt.parent.children.remove(elt);
 				}
 			}
-			return refresh;
+			for(f in effects) {
+				f(undo);
+			}
+
+			if (!removeInstance(toElt)) {
+				return true;
+			}
+			makePrefab(toElt);
+			return false;
 		}
 	}
 
@@ -3506,7 +3553,7 @@ class SceneEditor {
 		if( p.type == "volumetricLightmap" || p.type == "light" )
 			uniqueName = true;
 
-		if( !uniqueName && sys.FileSystem.exists(getDataPath(p.name)) )
+		if( !uniqueName && p.name != null && p.name.length > 0 && sys.FileSystem.exists(getDataPath(p.name)) )
 			uniqueName = true;
 
 		var prefix = null;
@@ -3593,8 +3640,6 @@ class SceneEditor {
 		}
 		for( ptype in allRegs.keys() ) {
 			var pinf = allRegs.get(ptype);
-			if (ptype == "UiDisplay")
-				trace("break");
 
 			if (!checkAllowParent(pinf, parent)) continue;
 			if(ptype == "shader") {
@@ -3648,8 +3693,6 @@ class SceneEditor {
 			label : label != null ? label : prefabInfo.inf.name,
 			click : function() {
 				function make(?sourcePath) {
-					if (ptype == "UiDisplay")
-						trace("Break");
 					var p = Type.createInstance(prefabInfo.prefabClass, [parent]);
 					//p.proto = new hrt.prefab.ProtoPrefab(p, sourcePath);
 					if(sourcePath != null)
@@ -3851,27 +3894,30 @@ class SceneEditor {
 		return groundPrefabsCache.copy();
 	}
 
-	public function projectToGround(ray: h3d.col.Ray, ?paintOn : hrt.prefab.Prefab ) {
+	public function projectToGround(ray: h3d.col.Ray, ?paintOn : hrt.prefab.Prefab, ignoreTerrain: Bool = false) {
 		var minDist = -1.;
 
-		for( elt in (paintOn == null ? getGroundPrefabs() : [paintOn]) ) {
-			var obj = Std.downcast(elt, Object3D);
-			if( obj == null ) continue;
+		if (!ignoreTerrain) {
+			for( elt in (paintOn == null ? getGroundPrefabs() : [paintOn]) ) {
+				var obj = Std.downcast(elt, Object3D);
+				if( obj == null ) continue;
 
-			var local3d = obj.findFirstLocal3d();
-			var lray = ray.clone();
-			lray.transform(local3d.getInvPos());
-			var dist = obj.localRayIntersection(lray);
-			if( dist > 0 ) {
-				var pt = lray.getPoint(dist);
-				pt.transform(local3d.getAbsPos());
-				var dist = pt.sub(ray.getPos()).length();
-				if( minDist < 0 || dist < minDist )
-					minDist = dist;
+				var local3d = obj.findFirstLocal3d();
+				var lray = ray.clone();
+				lray.transform(local3d.getInvPos());
+				var dist = obj.localRayIntersection(lray);
+				if( dist > 0 ) {
+					var pt = lray.getPoint(dist);
+					pt.transform(local3d.getAbsPos());
+					var dist = pt.sub(ray.getPos()).length();
+					if( minDist < 0 || dist < minDist )
+						minDist = dist;
+				}
 			}
+			if( minDist >= 0 )
+				return minDist;
 		}
-		if( minDist >= 0 )
-			return minDist;
+
 
 		var zPlane = h3d.col.Plane.Z(0);
 		var pt = ray.intersect(zPlane);
@@ -3885,19 +3931,19 @@ class SceneEditor {
 		return minDist;
 	}
 
-	public function screenDistToGround(sx : Float, sy : Float, ?paintOn : hrt.prefab.Prefab) : Null<Float> {
+	public function screenDistToGround(sx : Float, sy : Float, ?paintOn : hrt.prefab.Prefab, ignoreTerrain: Bool = false) : Null<Float> {
 		var camera = scene.s3d.camera;
 		var ray = camera.rayFromScreen(sx, sy);
-		var dist = projectToGround(ray, paintOn);
+		var dist = projectToGround(ray, paintOn, ignoreTerrain);
 		if( dist >= 0 )
 			return dist + camera.zNear;
 		return null;
 	}
 
-	public function screenToGround(sx: Float, sy: Float, ?paintOn : hrt.prefab.Prefab ) {
+	public function screenToGround(sx: Float, sy: Float, ?paintOn : hrt.prefab.Prefab, ignoreTerrain: Bool = false) {
 		var camera = scene.s3d.camera;
 		var ray = camera.rayFromScreen(sx, sy);
-		var dist = projectToGround(ray, paintOn);
+		var dist = projectToGround(ray, paintOn, ignoreTerrain);
 		if(dist >= 0) {
 			return ray.getPoint(dist);
 		}

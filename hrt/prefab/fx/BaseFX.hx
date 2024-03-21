@@ -53,9 +53,7 @@ class ShaderAnimation extends Evaluator {
 }
 
 class ShaderDynAnimation extends ShaderAnimation {
-
-	static var tmpVec = new h3d.Vector();
-	var vectors : Array<h3d.Vector4>;
+	var tmpVector4 = new h3d.Vector4();
 	override function setTime(time: Float) {
 		var shader : hxsl.DynamicShader = cast shader;
 		for(param in params) {
@@ -70,21 +68,23 @@ class ShaderDynAnimation extends ShaderAnimation {
 				case TBool:
 					var val = getFloat(param.value, time) >= 0.5;
 					shader.setParamValue(v, val);
-				case TVec(size, VFloat):
-					if(vectors == null)
-						vectors = [];
-					var vec = vectors[param.idx];
-					if(vec == null) {
-						vec = new h3d.Vector4();
-						vectors[param.idx] = vec;
+				case TVec(4, VFloat):
+					var index = shader.getParamIndex(v);
+					var vector = shader.getParamValue(index);
+					if (vector == null) {
+						vector = new h3d.Vector4();
+						shader.setParamValue(v, vector);
 					}
-					getVector(param.value, time, vec);
-					if( size < 4 ) {
-						var tmpVec = tmpVec;
-						tmpVec.set(vec.x, vec.y, vec.z);
-						shader.setParamValue(v, tmpVec);
-					} else
-						shader.setParamValue(v, vec);
+					getVector(param.value, time, vector);
+				case TVec(_, VFloat):
+					var index = shader.getParamIndex(v);
+					var vector = shader.getParamValue(index);
+					if (vector == null) {
+						vector = new h3d.Vector();
+						shader.setParamValue(v, vector);
+					}
+					getVector(param.value, time, tmpVector4);
+					vector.set(tmpVector4.x, tmpVector4.y, tmpVector4.z);
 				default:
 			}
 		}
@@ -98,8 +98,10 @@ typedef ObjectAnimation = {
 	?obj2d: h2d.Object,
 	events: Array<hrt.prefab.fx.Event.EventInstance>,
 	?position: Value,
+	?localPosition: Value,
 	?scale: Value,
 	?rotation: Value,
+	?localRotation: Value,
 	?color: Value,
 	?visibility: Value,
 	?additionalProperies : AdditionalProperies

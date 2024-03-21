@@ -53,7 +53,7 @@ typedef SearchFilter = {
 @:allow(hide.comp.cdb)
 class Editor extends Component {
 
-	static var COMPARISON_EXPR_CHARS = ["!=", ">=", "<=", "=", "<", ">"];
+	static var COMPARISON_EXPR_CHARS = ["!=", ">=", "<=", "==", "<", ">"];
 	var base : cdb.Database;
 	var currentSheet : cdb.Sheet;
 	var existsCache : Map<String,{ t : Float, r : Bool }> = new Map();
@@ -278,8 +278,25 @@ class Editor extends Component {
 		all.removeClass("filtered");
 
 		var parser = new hscript.Parser();
+		parser.allowMetadata = true;
 		parser.allowTypes = true;
+		parser.allowJSON = true;
+
 		var interp = new hscript.Interp();
+
+		var sheetNames = new Map();
+		for( s in this.base.sheets )
+			sheetNames.set(Formulas.getTypeName(s), s);
+
+		function replaceRec( e : hscript.Expr ) {
+			switch( e.e ) {
+			case EField({ e : EIdent(s) }, name) if( sheetNames.exists(s) ):
+				if( sheetNames.get(s).idCol != null )
+					e.e = EConst(CString(name)); // replace for faster eval
+			default:
+				hscript.Tools.iter(e, replaceRec);
+			}
+		}
 
 		if( filters.length > 0 ) {
 			if (searchHidden) {
@@ -301,25 +318,25 @@ class Editor extends Component {
 
 				for (idx => l in currentSheet.lines) {
 					// Register variables for the current line
-					interp.variables.clear();
-					interp.variables.set("this", @:privateAccess formulas.remap(l, this.currentSheet));
+					@:privateAccess interp.resetVariables();
+					@:privateAccess interp.initOps();
+					interp.variables.set("Math", Math);
 
+					// Register variables of sheets cdb
+					var vars = @:privateAccess formulas.remap(l, this.currentSheet);
+					for (f in Reflect.fields(vars)) {
+						var v = Reflect.getProperty(vars, f);
+						interp.variables.set(f, v);
+					}
+
+					// Check if the current line is filtered or not
 					var filtered = true;
 					for (f in filters) {
 						var input = f.text;
+						var expr = try parser.parseString(input) catch( e : Dynamic ) { trace(e); continue; }
+						replaceRec(expr);
 
-						// Not working for now, should check with expression variables
-						// instead of contains() in input string
-						// // Manage input variable without 'this.'
-						// input = StringTools.replace(input, "this.", "");
-						// for (v in Reflect.fields(interp.variables.get("this"))) {
-						// 	if (StringTools.contains(input, v)) {
-						// 		input = StringTools.replace(input, v, "this." + v);
-						// 	}
-						// }
-
-						var expr = try parser.parseString(input) catch( e : Dynamic ) continue;
-						var res = try interp.execute(expr) catch(e : Dynamic ) { trace(e); continue;} // Catch errors that can be thrown if search input text is not interpretabled
+						var res = try interp.execute(expr) catch( e : hscript.Expr.Error ) { continue; } // Catch errors that can be thrown if search input text is not interpretabled
 						if (res) {
 							filtered = false;
 							break;

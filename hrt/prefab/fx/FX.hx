@@ -194,6 +194,32 @@ class FXAnimation extends h3d.scene.Object {
 						anim.obj.setTransform(m);
 					}
 
+					// Animations that are only applied on local transforms of leafs objects
+					if (anim.localRotation != null || anim.localPosition != null) {
+						var leafObjects = anim.elt.findAll(Object3D, o -> o.children == null || o.children.length == 0);
+
+						for (o in leafObjects) {
+							var baseMat = o.getTransform();
+
+							tempMat.identity();
+							var m = tempMat;
+
+							if(anim.localRotation != null) {
+								var localRotation = evaluator.getVector(anim.localRotation, time, tempVec);
+								localRotation.scale3(Math.PI / 180.0);
+								m.rotate(localRotation.x, localRotation.y, localRotation.z);
+							}
+
+							if(anim.localPosition != null) {
+								var localPosition = evaluator.getVector(anim.localPosition, time, tempVec);
+								m.translate(localPosition.x, localPosition.y, localPosition.z);
+							}
+
+							m.multiply(m, baseMat);
+							o.local3d.setTransform(m);
+						}
+					}
+
 					if(anim.visibility != null)
 						anim.obj.visible = anim.elt.visible && evaluator.getFloat(anim.visibility, time) > 0.5;
 
@@ -351,8 +377,10 @@ class FXAnimation extends h3d.scene.Object {
 			obj: local3d,
 			events: null,
 			position: makeVector("position", 0.0),
+			localPosition: makeVector("localPosition", 0.0),
 			scale: makeVector("scale", 1.0, true),
 			rotation: makeVector("rotation", 0.0, 360.0),
+			localRotation: makeVector("localRotation", 0.0, 360.0),
 			color: makeColor("color"),
 			visibility: makeVal("visibility", null),
 			additionalProperies: ap,

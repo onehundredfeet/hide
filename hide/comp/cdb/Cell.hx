@@ -1078,7 +1078,7 @@ class Cell {
 			ide.chooseFile(["*"], function(file) {
 				setValue(file);
 				closeEdit();
-			}, false, currentValue);
+			}, false, (currentValue == '') ? null : currentValue);
 			#end
 		case TFlags(values):
 			var div = new Element("<div>").addClass("flagValues");
