@@ -490,6 +490,7 @@ class EmitterObject extends h3d.scene.Object {
 	public var frameDivisionY : Int = 1;
 	public var animationSpeed : Float = 1;
 	public var animationLoop : Bool = true;
+	public var animationUseSourceUVs : Bool = true;
 	public var animationBlendBetweenFrames : Bool = true;
 
 	// ALIGNMENT
@@ -643,6 +644,7 @@ class EmitterObject extends h3d.scene.Object {
 			if( frameCount > 1 && spriteSheet != null ) {
 				var tex = hxd.res.Loader.currentInstance.load(spriteSheet).toTexture();
 				animatedTextureShader = new h3d.shader.AnimatedTexture(tex, frameDivisionX, frameDivisionY, frameCount, frameCount * animationSpeed / lifeTime);
+				animatedTextureShader.useSourceUVs = animationUseSourceUVs;
 				animatedTextureShader.startTime = startTime;
 				animatedTextureShader.loop = animationLoop;
 				animatedTextureShader.blendBetweenFrames = animationBlendBetweenFrames;
@@ -818,8 +820,8 @@ class EmitterObject extends h3d.scene.Object {
 			var scene = relativeScenePosition ? getScene() : null;
 
 			if (trailsTemplate != null && trails == null) {
-				trailsTemplate.make();
-				trails = cast trailsTemplate.local3d;
+				var made = trailsTemplate.make(this);
+				trails = cast made.local3d;
 				trails.autoTrackPosition = false;
 			}
 
@@ -1390,6 +1392,7 @@ class Emitter extends Object3D {
 		{ name: "frameDivisionY", t: PInt(1), def: 1, groupName : "Sprite Sheet Animation", disp: "Divisions Y" },
 		{ name: "animationSpeed", t: PFloat(0, 2.0), def: 1.0, groupName : "Sprite Sheet Animation", disp: "Speed" },
 		{ name: "animationLoop", t: PBool, def: true, groupName : "Sprite Sheet Animation", disp: "Loop" },
+		{ name: "animationUseSourceUV", t: PBool, def: true, groupName : "Sprite Sheet Animation", disp: "Use Source UV" },
 		{ name: "animationBlendBetweenFrames", t: PBool, def: true, groupName : "Sprite Sheet Animation", disp: "Blend frames" },
 
 		// COLLISION
@@ -1416,14 +1419,18 @@ class Emitter extends Object3D {
 		{ name: "instOffset",     			t: PVec(3, -10, 10),  def: [0.,0.,0.], disp: "Offset", groupName: "Particle Transform"},
 	];
 
-	public static var PARAMS : Array<ParamDef> = {
-		var a = emitterParams.copy();
+
+	public static var PARAMS : Map<String, ParamDef> = {
+		var map = new Map();
+		for(e in emitterParams) {
+			map.set(e.name, e);
+		}
 		for(i in instanceParams) {
 			i.instance = true;
 			i.animate = true;
-			a.push(i);
+			map.set(i.name, i);
 		}
-		a;
+		map;
 	};
 
 	override function save() {
@@ -1491,7 +1498,7 @@ class Emitter extends Object3D {
 	}
 
 	function getParamVal(name: String, rand: Bool=false) : Dynamic {
-		var param = PARAMS.find(p -> p.name == name);
+		var param = PARAMS.get(name);
 		if(param == null)
 			return Reflect.field(props, name);
 		var isVector = switch(param.t) {
@@ -1619,7 +1626,7 @@ class Emitter extends Object3D {
 
 			var baseProp: Dynamic = Reflect.field(props, name);
 			var randProp: Dynamic = Reflect.field(props, randProp(name));
-			var param = PARAMS.find(p -> p.name == name);
+			var param = PARAMS.get(name);
 			switch(param.t) {
 				case PVec(_):
 					inline function makeComp(idx, suffix) {

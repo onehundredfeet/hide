@@ -1114,7 +1114,20 @@ class Ide extends hide.tools.IdeData {
 			config.global.save();
 		});
 
+		// profilers
+		var profilers = menu.find(".analysis");
+		profilers.find(".memprof").click(function(_) {
+			open("hide.view.Profiler",{});
+		});
+
 		window.menu = new hide.ui.Menu(menu).root;
+	}
+
+	public function showFileInResources(path: String) {
+		var filetree = getViews(hide.view.FileTree)[0];
+		if( filetree != null ) {
+			filetree.revealNode(path);
+		}
 	}
 
 	public static function showFileInExplorer(path : String) {
