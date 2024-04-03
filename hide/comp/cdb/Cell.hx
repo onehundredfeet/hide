@@ -38,10 +38,12 @@ class Cell {
 		this.editor = line.table.editor;
 		this.column = column;
 		@:privateAccess line.cells.push(this);
+		
+		var te = new Element(root);
+		te.prop("cellComp", this);
 
 		root.classList.add("t_" + typeNames[column.type.getIndex()]);
 		root.classList.add("n_" + column.name);
-
 		if(line.table.parent == null) {
 			var editProps = Editor.getColumnProps(column);
 			root.classList.toggle("cat", editProps.categories != null);
@@ -97,6 +99,7 @@ class Cell {
 	}
 
 	public function dragDropFile( relativePath : String, isDrop : Bool = false ) : Bool {
+		trace('dragDropFile ${relativePath} ${isDrop} on ${column.type} with ${canEdit()}');
 		if ( !canEdit() || column.type != TFile) return false;
 		if ( isDrop ) {
 			setValue(relativePath);
@@ -1074,8 +1077,10 @@ class Cell {
 			};
 			#end
 		case TFile:
+			trace('Choosing file');
 			#if js
-			ide.chooseFile(["*"], function(file) {
+			ide.chooseFile([], function(file) {
+				trace('Chose file: ' + file);
 				setValue(file);
 				closeEdit();
 			}, false, (currentValue == '') ? null : currentValue);

@@ -1277,11 +1277,25 @@ class Ide extends hide.tools.IdeData {
 	}
 
 	public static var inst : Ide;
-
+	static var _logFile : sys.io.FileOutput;
 	static function main() {
+		
+		haxe.Log.trace = function(v:Dynamic, ?infos:haxe.PosInfos) {
+		if (_logFile == null) {
+			_logFile = sys.io.File.write("/Users/rcleven/git/sdhaxe/log.hide.txt", false);
+		}
+		// 	// custom trace function here
+			if (infos != null) {
+				_logFile.writeString('${infos.fileName}[${infos.lineNumber}] : "${v}"\n');
+			} else {
+				_logFile.writeString('line "${v}"\n');
+			}
+		}
+		trace('HIDE IDE TRACE');
 		h3d.impl.RenderContext.STRICT = false; // prevent errors with bad renderer
 		hide.tools.Macros.include(["hide.view","h3d.prim","h3d.scene","h3d.pass","hide.prefab","hrt"]);
 		new Ide();
+
 	}
 
 }
