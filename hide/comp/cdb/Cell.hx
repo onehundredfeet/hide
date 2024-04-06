@@ -39,9 +39,11 @@ class Cell {
 		this.column = column;
 		@:privateAccess line.cells.push(this);
 		
-		var te = new Element(root);
-		te.prop("cellComp", this);
-
+		if (column.type == TFile) {
+			var te = new Element(root);
+			te.prop("cellComp", this);
+		}
+		
 		root.classList.add("t_" + typeNames[column.type.getIndex()]);
 		root.classList.add("n_" + column.name);
 		if(line.table.parent == null) {
